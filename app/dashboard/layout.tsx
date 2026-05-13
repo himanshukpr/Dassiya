@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/components/providers/AuthContext";
+import { AppDataProvider } from "@/components/providers/AppDataStore";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -14,7 +15,8 @@ import {
   Calculator, 
   SignOut, 
   List,
-  X
+  X,
+  GearSix
 } from "@phosphor-icons/react";
 
 const navigation = [
@@ -23,6 +25,7 @@ const navigation = [
   { name: "Milk Logs", href: "/dashboard/logs", icon: ListBullets },
   { name: "Receipts", href: "/dashboard/receipts", icon: Receipt },
   { name: "Bills (Dassiya)", href: "/dashboard/bills", icon: Calculator },
+  { name: "Rate Settings", href: "/dashboard/rates", icon: GearSix },
 ];
 
 export default function DashboardLayout({
@@ -50,6 +53,7 @@ export default function DashboardLayout({
   }
 
   return (
+    <AppDataProvider>
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
@@ -120,5 +124,6 @@ export default function DashboardLayout({
         </main>
       </div>
     </div>
+    </AppDataProvider>
   );
 }

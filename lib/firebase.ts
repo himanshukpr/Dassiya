@@ -1,6 +1,11 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  getFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -11,9 +16,27 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// Singleton — getApp() if already initialized, otherwise initializeApp()
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+
 const auth = getAuth(app);
-const db = getFirestore(app);
+
+// Enable Firestore offline persistence via IndexedDB so data is served
+// instantly from disk on every page load, with background server sync.
+// initializeFirestore throws if called more than once on the same app,
+// so we catch and fall back to getFirestore() on a hot-reload.
+function buildFirestore() {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } catch {
+    return getFirestore(app);
+  }
+}
+
+const db = buildFirestore();
 
 export { app, auth, db };
