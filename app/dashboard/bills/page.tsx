@@ -651,7 +651,7 @@ export default function BillsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-hidden">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Bills (Dassiya)</h1>
 
@@ -724,7 +724,7 @@ export default function BillsPage() {
               </div>
 
               {/* Per-account preview table */}
-              <div className="w-full max-w-full rounded-lg border overflow-x-auto overflow-y-hidden">
+              <div className="w-full max-w-full min-w-0 rounded-lg border overflow-x-auto overflow-y-hidden">
                 <table className="min-w-4xl w-full table-fixed text-sm">
                   <thead className="bg-slate-50 dark:bg-slate-800">
                     <tr>
@@ -812,7 +812,7 @@ export default function BillsPage() {
       </div>
 
       {/* Generated bills table */}
-      <div className="rounded-md border bg-white dark:bg-slate-900 p-4">
+      <div className="min-w-0 rounded-md border bg-white dark:bg-slate-900 p-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">PDF Export</h2>
@@ -938,12 +938,12 @@ export default function BillsPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className={`rounded-md border bg-white dark:bg-slate-900 ${mobileTab !== "purchase" ? "hidden lg:block" : ""}`}>
+        <div className={`min-w-0 rounded-md border bg-white dark:bg-slate-900 ${mobileTab !== "purchase" ? "hidden lg:block" : ""}`}>
           <div className="border-b px-4 py-3">
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Purchase From</h2>
           </div>
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="overflow-x-auto overflow-y-hidden touch-pan-x">
+            <Table className="min-w-[56rem] w-max table-fixed text-sm">
               <TableHeader>
                 <TableRow>
                   <TableHead>Period</TableHead>
@@ -1001,12 +1001,12 @@ export default function BillsPage() {
           </div>
         </div>
 
-        <div className={`rounded-md border bg-white dark:bg-slate-900 ${mobileTab !== "sale" ? "hidden lg:block" : ""}`}>
+        <div className={`min-w-0 rounded-md border bg-white dark:bg-slate-900 ${mobileTab !== "sale" ? "hidden lg:block" : ""}`}>
           <div className="border-b px-4 py-3">
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Sale To</h2>
           </div>
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="overflow-x-auto overflow-y-hidden touch-pan-x">
+            <Table className="min-w-[56rem] w-max table-fixed text-sm">
               <TableHeader>
                 <TableRow>
                   <TableHead>Period</TableHead>
