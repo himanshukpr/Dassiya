@@ -660,14 +660,14 @@ export default function BillsPage() {
             <Button>Generate Bills</Button>
           </DialogTrigger>
 
-          <DialogContent className="w-[min(96vw,72rem)] max-w-none sm:max-w-none max-h-[90vh] overflow-x-hidden overflow-y-auto">
+          <DialogContent className="w-[min(96vw,72rem)] max-w-none sm:max-w-none max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Generate 10-Day Dassiya — All Accounts</DialogTitle>
             </DialogHeader>
 
             <div className="space-y-4">
               {/* Period selectors */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Month</Label>
                   <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
@@ -723,67 +723,6 @@ export default function BillsPage() {
                 )}
               </div>
 
-              {/* Per-account preview table */}
-              <div className="w-full max-w-full min-w-0 rounded-lg border overflow-x-auto overflow-y-hidden">
-                <table className="min-w-4xl w-full table-fixed text-sm">
-                  <thead className="bg-slate-50 dark:bg-slate-800">
-                    <tr>
-                      <th className="w-[28%] text-left px-3 py-2 text-xs font-semibold text-slate-500">Account</th>
-                      <th className="w-[9%] text-right px-3 py-2 text-xs font-semibold text-slate-500">Logs</th>
-                      <th className="w-[11%] text-right px-3 py-2 text-xs font-semibold text-slate-500">Cow (L)</th>
-                      <th className="w-[11%] text-right px-3 py-2 text-xs font-semibold text-slate-500">Buf (L)</th>
-                      <th className="w-[12%] text-right px-3 py-2 text-xs font-semibold text-slate-500">Received (₹)</th>
-                      <th className="w-[15%] text-right px-3 py-2 text-xs font-semibold text-slate-500">Amount (₹)</th>
-                      <th className="w-[15%] text-right px-3 py-2 text-xs font-semibold text-slate-500">New Bal (₹)</th>
-                      <th className="w-[11%] text-center px-3 py-2 text-xs font-semibold text-slate-500">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y dark:divide-slate-700">
-                    {accountPreviews.map(({ account, logsCount, totalCow, totalBuffalo, totalAmount, receivedAmount, givenAmount, newBalance, existingBill, willGenerate }) => (
-                      <tr
-                        key={account.id}
-                        className={`${willGenerate
-                          ? "bg-white dark:bg-slate-900"
-                          : existingBill
-                            ? "bg-orange-50/50 dark:bg-orange-950/10"
-                            : "bg-slate-50/70 dark:bg-slate-800/30 opacity-60"
-                          }`}
-                      >
-                        <td className="px-3 py-2 align-top min-w-0">
-                          <p className="truncate font-medium">{account.name}</p>
-                          <p className="truncate text-xs text-slate-400">{account.type}</p>
-                        </td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">{logsCount}</td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalCow.toFixed(1)}</td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalBuffalo.toFixed(1)}</td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap text-blue-700 dark:text-blue-400">
-                          {account.type === "Purchase From" ? (givenAmount > 0 ? `₹${givenAmount.toFixed(2)}` : "—") : (receivedAmount > 0 ? `₹${receivedAmount.toFixed(2)}` : "—")}
-                        </td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap font-semibold">
-                          {totalAmount > 0 ? `+₹${totalAmount.toFixed(2)}` : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">
-                          {totalAmount > 0 || receivedAmount > 0 || givenAmount > 0 || existingBill ? `₹${newBalance.toFixed(2)}` : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          {existingBill ? (
-                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300">
-                              <Warning size={12} /> Recreate
-                            </span>
-                          ) : logsCount === 0 ? (
-                            <span className="text-xs text-slate-400">No Logs</span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
-                              <CheckCircle size={12} /> Ready
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
               {toGenerate.length === 0 && (
                 <div className="rounded-lg bg-slate-50 dark:bg-slate-800 border p-4 text-center text-sm text-slate-500">
                   {alreadyDone.length === accounts.length
@@ -792,18 +731,21 @@ export default function BillsPage() {
                 </div>
               )}
 
-              <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              <DialogFooter className="gap-2 sm:flex-row">
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
                   Cancel
                 </Button>
                 <Button
                   onClick={handleGenerate}
                   disabled={saving || toGenerate.length === 0}
-                  className="min-w-45"
+                  className="w-full sm:w-auto"
                 >
-                  {saving
-                    ? `Generating ${toGenerate.length} bills...`
-                    : `Generate / Recreate ${toGenerate.length} Bill${toGenerate.length !== 1 ? "s" : ""}`}
+                  <span className="sm:hidden">{saving ? "Generating..." : `Generate (${toGenerate.length})`}</span>
+                  <span className="hidden sm:inline">
+                    {saving
+                      ? `Generating ${toGenerate.length} bills...`
+                      : `Generate / Recreate ${toGenerate.length} Bill${toGenerate.length !== 1 ? "s" : ""}`}
+                  </span>
                 </Button>
               </DialogFooter>
             </div>
