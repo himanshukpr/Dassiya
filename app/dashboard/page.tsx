@@ -124,7 +124,7 @@ export default function DashboardPage() {
           {[
             { label: "Add Milk Log", href: "/dashboard/logs", icon: ListBullets, color: "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" },
             { label: "Add Account", href: "/dashboard/accounts", icon: Users, color: "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300" },
-            { label: "Record Payment", href: "/dashboard/receipts", icon: Receipt, color: "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300" },
+            { label: "Record Payment", href: "/dashboard/payments", icon: Receipt, color: "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300" },
             { label: "Set Rates", href: "/dashboard/rates", icon: GearSix, color: "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300" },
           ].map((link) => (
             <Link

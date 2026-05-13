@@ -48,11 +48,10 @@ function AccountCombobox({
           {selected ? (
             <span className="flex items-center gap-2">
               <span className="font-medium">{selected.name}</span>
-              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                selected.type === "Purchase From"
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${selected.type === "Purchase From"
                   ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
                   : "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-              }`}>
+                }`}>
                 {selected.type}
               </span>
             </span>
@@ -80,11 +79,10 @@ function AccountCombobox({
                     <span>{acc.name}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
-                    <span className={`px-1.5 py-0.5 rounded-full ${
-                      acc.type === "Purchase From"
+                    <span className={`px-1.5 py-0.5 rounded-full ${acc.type === "Purchase From"
                         ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
                         : "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                    }`}>
+                      }`}>
                       {acc.type}
                     </span>
                     <span className={`font-medium ${acc.previousBalance < 0 ? "text-red-500" : "text-slate-500"}`}>
@@ -163,16 +161,16 @@ export default function ReceiptsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Receipts</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Payments</h1>
 
         <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
           <DialogTrigger asChild>
-            <Button>Add Receipt</Button>
+            <Button>Add Payment</Button>
           </DialogTrigger>
 
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Add Payment Receipt</DialogTitle>
+              <DialogTitle>Add Payment</DialogTitle>
             </DialogHeader>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -191,11 +189,10 @@ export default function ReceiptsPage() {
               {selectedAccount && paymentType && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border text-sm">
                   <span className="text-slate-500">Payment Type:</span>
-                  <span className={`font-semibold px-2 py-0.5 rounded-full text-xs ${
-                    paymentType === "Payment Given"
+                  <span className={`font-semibold px-2 py-0.5 rounded-full text-xs ${paymentType === "Payment Given"
                       ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
                       : "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                  }`}>
+                    }`}>
                     {paymentType}
                   </span>
                   <span className="text-xs text-slate-400 ml-auto">
@@ -300,16 +297,22 @@ export default function ReceiptsPage() {
                   <TableCell>{receipt.date}</TableCell>
                   <TableCell className="font-medium">{receipt.accountName}</TableCell>
                   <TableCell>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                      receipt.type === "Payment Received"
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${receipt.type === "Payment Received"
                         ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
                         : "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
-                    }`}>
+                      }`}>
                       {receipt.type}
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
-                    <span className="font-medium text-red-500">−₹{receipt.amount.toFixed(2)}</span>
+                    {receipt.type === "Payment Received" ?
+                      <span className="font-medium text-green-500">
+                        +₹{receipt.amount.toFixed(2)}
+                      </span>
+                      :
+                      <span className="font-medium text-red-500">
+                        −₹{receipt.amount.toFixed(2)}
+                      </span>}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => handleDelete(receipt)}>

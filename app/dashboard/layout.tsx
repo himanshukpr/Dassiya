@@ -23,7 +23,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Calculator },
   { name: "Accounts", href: "/dashboard/accounts", icon: Users },
   { name: "Milk Logs", href: "/dashboard/logs", icon: ListBullets },
-  { name: "Receipts", href: "/dashboard/receipts", icon: Receipt },
+  { name: "Payments", href: "/dashboard/payments", icon: Receipt },
   { name: "Bills (Dassiya)", href: "/dashboard/bills", icon: Calculator },
   { name: "Rate Settings", href: "/dashboard/rates", icon: GearSix },
 ];
