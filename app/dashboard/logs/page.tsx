@@ -163,7 +163,7 @@ export default function LogsPage() {
             <Button>Add Milk Log</Button>
           </DialogTrigger>
           <DialogContent
-            className="max-h-[calc(100vh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto p-3 sm:max-w-6xl sm:p-4"
+            className="max-h-[calc(100dvh-4rem)] w-[calc(100vw-1rem)] overflow-y-auto p-3 sm:max-w-6xl sm:p-4"
             onEscapeKeyDown={(event) => event.preventDefault()}
             onPointerDownOutside={(event) => event.preventDefault()}
           >
