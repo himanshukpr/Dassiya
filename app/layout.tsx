@@ -2,6 +2,7 @@ import { Geist, Geist_Mono, Inter, Raleway } from "next/font/google"
 
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
+import { AuthProvider } from "@/components/providers/AuthContext"
 import { cn } from "@/lib/utils";
 
 const ralewayHeading = Raleway({subsets:['latin'],variable:'--font-heading'});
@@ -25,7 +26,7 @@ export default function RootLayout({
       className={cn("antialiased", fontMono.variable, "font-sans", inter.variable, ralewayHeading.variable)}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider><AuthProvider>{children}</AuthProvider></ThemeProvider>
       </body>
     </html>
   )
