@@ -80,6 +80,8 @@ export interface Bill {
   totalCowQty: number;
   totalBuffaloQty: number;
   totalMilkAmount: number;
+  receivedAmount: number;
+  givenAmount: number;
   previousBalanceAtGeneration: number;
   newBalance: number;
   createdAt: any;
@@ -404,9 +406,9 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
       deleteDoc(doc(db, "dairies", user.uid, "receipts", receipt.id)),
       revertedBalance !== null
         ? updateDoc(doc(db, "dairies", user.uid, "accounts", receipt.accountId), {
-            previousBalance: revertedBalance,
-            updatedAt: serverTimestamp(),
-          })
+          previousBalance: revertedBalance,
+          updatedAt: serverTimestamp(),
+        })
         : Promise.resolve(),
     ]);
   }, [user, accounts]);
@@ -491,9 +493,9 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
       deleteDoc(doc(db, "dairies", user.uid, "bills", bill.id)),
       revertedBalance !== null
         ? updateDoc(doc(db, "dairies", user.uid, "accounts", bill.accountId), {
-            previousBalance: revertedBalance,
-            updatedAt: serverTimestamp(),
-          })
+          previousBalance: revertedBalance,
+          updatedAt: serverTimestamp(),
+        })
         : Promise.resolve(),
     ]);
   }, [user, accounts]);

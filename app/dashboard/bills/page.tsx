@@ -26,7 +26,7 @@ const MONTHS = [
 
 export default function BillsPage() {
   const {
-    accounts, bills, logs,
+    accounts, bills, logs, receipts,
     loadingBills, addBillsBatch, deleteBill, getLogsForPeriod,
   } = useAppData();
 
@@ -37,7 +37,7 @@ export default function BillsPage() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [period, setPeriod] = useState("1-10");
   const [exportScope, setExportScope] = useState<"all" | "purchase" | "sale">("all");
-  const [previewed, setPreviewed] = useState(false);
+  const [mobileTab, setMobileTab] = useState<"purchase" | "sale">("purchase");
 
   // ── Compute date range for the selected period ──────────────────────────
   const { startStr, endStr, label } = useMemo(() => {
@@ -57,11 +57,30 @@ export default function BillsPage() {
     };
   }, [month, year, period]);
 
+  const selectedPeriodLogs = useMemo(() => {
+    return logs.filter((log) => log.date >= startStr && log.date <= endStr);
+  }, [logs, startStr, endStr]);
+  const selectedPeriodReceipts = useMemo(() => {
+    return receipts.filter((receipt) => receipt.date >= startStr && receipt.date <= endStr);
+  }, [receipts, startStr, endStr]);
+  const selectedPeriodReceivedAmount = useMemo(() => {
+    return selectedPeriodReceipts.reduce(
+      (sum, receipt) => sum + (receipt.type === "Payment Received" ? receipt.amount : 0),
+      0
+    );
+  }, [selectedPeriodReceipts]);
+
   // ── Build per-account preview from local log cache ──────────────────────
   // This runs instantly on every render — no Firestore query needed
   const accountPreviews = useMemo(() => {
     return accounts.map((account) => {
       const logsInPeriod = getLogsForPeriod(account.id, startStr, endStr);
+      const receivedAmount = selectedPeriodReceipts
+        .filter((receipt) => receipt.accountId === account.id && receipt.type === "Payment Received")
+        .reduce((sum, receipt) => sum + (receipt.amount ?? 0), 0);
+      const givenAmount = selectedPeriodReceipts
+        .filter((receipt) => receipt.accountId === account.id && receipt.type === "Payment Given")
+        .reduce((sum, receipt) => sum + (receipt.amount ?? 0), 0);
 
       let totalCow = 0, totalBuffalo = 0, totalAmount = 0;
       logsInPeriod.forEach((l) => {
@@ -74,6 +93,10 @@ export default function BillsPage() {
       const existingBill = bills.find(
         (b) => b.accountId === account.id && b.startDate === startStr && b.endDate === endStr
       );
+      const baseBalance = existingBill
+        ? account.previousBalance - (existingBill.totalMilkAmount ?? 0)
+        : account.previousBalance;
+      const newBalance = baseBalance + totalAmount;
 
       return {
         account,
@@ -81,13 +104,16 @@ export default function BillsPage() {
         totalCow,
         totalBuffalo,
         totalAmount,
-        newBalance: account.previousBalance + totalAmount,
+        receivedAmount,
+        givenAmount,
+        baseBalance,
+        newBalance,
         existingBill: existingBill ?? null,
-        // Will be generated only if: has logs AND no existing bill
-        willGenerate: logsInPeriod.length > 0 && !existingBill,
+        // Existing bills can be recreated; empty periods only generate when a bill already exists.
+        willGenerate: logsInPeriod.length > 0 || !!existingBill,
       };
     });
-  }, [accounts, bills, startStr, endStr, getLogsForPeriod]);
+  }, [accounts, bills, startStr, endStr, getLogsForPeriod, selectedPeriodReceipts]);
 
   const toGenerate = accountPreviews.filter((p) => p.willGenerate);
   const alreadyDone = accountPreviews.filter((p) => !!p.existingBill);
@@ -99,11 +125,6 @@ export default function BillsPage() {
   const selectedPeriodSaleBills = selectedPeriodBills.filter((bill) => accountTypeById.get(bill.accountId) === "Sale To");
   const selectedPeriodPurchaseBills = selectedPeriodBills.filter((bill) => accountTypeById.get(bill.accountId) === "Purchase From");
   const hasSelectedPeriodBills = selectedPeriodBills.length > 0;
-  const selectedPeriodLogs = useMemo(() => {
-    return logs.filter((log) => log.date >= startStr && log.date <= endStr);
-  }, [logs, startStr, endStr]);
-  const selectedPeriodSaleLogs = selectedPeriodLogs.filter((log) => log.accountType === "Sale To");
-  const selectedPeriodPurchaseLogs = selectedPeriodLogs.filter((log) => log.accountType === "Purchase From");
 
   const getExportAccounts = () => {
     if (exportScope === "purchase") {
@@ -203,12 +224,15 @@ export default function BillsPage() {
     if (items.length === 0) {
       return `
         <tr>
-          <td colspan="7" class="muted" style="text-align:center; padding: 16px;">No bills in this section.</td>
+          <td colspan="8" class="muted" style="text-align:center; padding: 16px;">No bills in this section.</td>
         </tr>
       `;
     }
 
-    return items.map((bill) => `
+    return items.map((bill) => {
+      const billType = getBillType(bill);
+      const paymentAmount = billType === "Purchase From" ? (bill.givenAmount ?? 0) : (bill.receivedAmount ?? 0);
+      return `
       <tr>
         <td>
           <div style="font-weight:700;">${bill.periodLabel}</div>
@@ -216,15 +240,17 @@ export default function BillsPage() {
         </td>
         <td>
           <div style="font-weight:700;">${bill.accountName}</div>
-          <div class="muted">${getBillType(bill)}</div>
+          <div class="muted">${billType}</div>
         </td>
         <td class="text-right">${bill.totalCowQty.toFixed(1)}</td>
         <td class="text-right">${bill.totalBuffaloQty.toFixed(1)}</td>
+        <td class="text-right">₹${paymentAmount.toFixed(2)}</td>
         <td class="text-right">₹${bill.totalMilkAmount.toFixed(2)}</td>
         <td class="text-right">₹${bill.previousBalanceAtGeneration.toFixed(2)}</td>
         <td class="text-right">₹${bill.newBalance.toFixed(2)}</td>
       </tr>
-    `).join("");
+    `;
+    }).join("");
   };
 
   const renderLogTableRows = (items: MilkLog[]) => {
@@ -525,6 +551,7 @@ export default function BillsPage() {
   };
 
   const handleExportSingleBillPdf = (bill: Bill) => {
+    const receivedAmount = bill.receivedAmount ?? 0;
     const body = `
       <div class="page">
         <div class="bill-card">
@@ -552,6 +579,10 @@ export default function BillsPage() {
               <p class="card-value">₹${bill.totalMilkAmount.toFixed(2)}</p>
             </div>
             <div class="card">
+              <p class="card-label">Received Amount</p>
+              <p class="card-value">₹${receivedAmount.toFixed(2)}</p>
+            </div>
+            <div class="card">
               <p class="card-label">New Balance</p>
               <p class="card-value">₹${bill.newBalance.toFixed(2)}</p>
             </div>
@@ -573,26 +604,45 @@ export default function BillsPage() {
     if (toGenerate.length === 0) return;
     setSaving(true);
 
-    const items = toGenerate.map(({ account, totalCow, totalBuffalo, totalAmount, newBalance }) => ({
-      billData: {
-        accountId: account.id,
-        accountName: account.name,
-        periodLabel: label,
-        startDate: startStr,
-        endDate: endStr,
-        totalCowQty: totalCow,
-        totalBuffaloQty: totalBuffalo,
-        totalMilkAmount: totalAmount,
-        previousBalanceAtGeneration: account.previousBalance,
-        newBalance,
-      },
-      accountNewBalance: newBalance,
-    }));
+    try {
+      const existingBillsToReplace = accountPreviews
+        .map(({ existingBill }) => existingBill)
+        .filter((bill): bill is Bill => !!bill);
 
-    await addBillsBatch(items);
-    setSaving(false);
-    setIsDialogOpen(false);
-    setPreviewed(false);
+      for (const bill of existingBillsToReplace) {
+        await deleteBill(bill);
+      }
+
+      const items = toGenerate.map(({ account, totalCow, totalBuffalo, totalAmount, receivedAmount, givenAmount, baseBalance, existingBill }) => {
+        const previousBalanceAtGeneration = existingBill
+          ? baseBalance
+          : account.previousBalance;
+        const newBalance = previousBalanceAtGeneration + totalAmount;
+
+        return {
+          billData: {
+            accountId: account.id,
+            accountName: account.name,
+            periodLabel: label,
+            startDate: startStr,
+            endDate: endStr,
+            totalCowQty: totalCow,
+            totalBuffaloQty: totalBuffalo,
+            totalMilkAmount: totalAmount,
+            receivedAmount,
+            givenAmount,
+            previousBalanceAtGeneration,
+            newBalance,
+          },
+          accountNewBalance: newBalance,
+        };
+      });
+
+      await addBillsBatch(items);
+      setIsDialogOpen(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (bill: Bill) => {
@@ -600,16 +650,12 @@ export default function BillsPage() {
     await deleteBill(bill);
   };
 
-  const resetForm = () => {
-    setPreviewed(false);
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Bills (Dassiya)</h1>
 
-        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button>Generate Bills</Button>
           </DialogTrigger>
@@ -663,11 +709,11 @@ export default function BillsPage() {
                   {startStr} → {endStr}
                 </span>
                 <span className="px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 font-medium">
-                  {toGenerate.length} will be generated
+                  {toGenerate.length} will be generated / recreated
                 </span>
                 {alreadyDone.length > 0 && (
                   <span className="px-2.5 py-1 rounded-full bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 font-medium">
-                    {alreadyDone.length} already done
+                    {alreadyDone.length} ready to recreate
                   </span>
                 )}
                 {noLogs.length > 0 && (
@@ -686,13 +732,14 @@ export default function BillsPage() {
                       <th className="w-[9%] text-right px-3 py-2 text-xs font-semibold text-slate-500">Logs</th>
                       <th className="w-[11%] text-right px-3 py-2 text-xs font-semibold text-slate-500">Cow (L)</th>
                       <th className="w-[11%] text-right px-3 py-2 text-xs font-semibold text-slate-500">Buf (L)</th>
+                      <th className="w-[12%] text-right px-3 py-2 text-xs font-semibold text-slate-500">Received (₹)</th>
                       <th className="w-[15%] text-right px-3 py-2 text-xs font-semibold text-slate-500">Amount (₹)</th>
                       <th className="w-[15%] text-right px-3 py-2 text-xs font-semibold text-slate-500">New Bal (₹)</th>
                       <th className="w-[11%] text-center px-3 py-2 text-xs font-semibold text-slate-500">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y dark:divide-slate-700">
-                    {accountPreviews.map(({ account, logsCount, totalCow, totalBuffalo, totalAmount, newBalance, existingBill, willGenerate }) => (
+                    {accountPreviews.map(({ account, logsCount, totalCow, totalBuffalo, totalAmount, receivedAmount, givenAmount, newBalance, existingBill, willGenerate }) => (
                       <tr
                         key={account.id}
                         className={`${willGenerate
@@ -709,16 +756,19 @@ export default function BillsPage() {
                         <td className="px-3 py-2 text-right whitespace-nowrap">{logsCount}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{totalCow.toFixed(1)}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{totalBuffalo.toFixed(1)}</td>
-                        <td className="px-3 py-2 text-right font-semibold text-green-700 dark:text-green-400">
-                          {totalAmount > 0 ? `₹${totalAmount.toFixed(2)}` : "—"}
+                        <td className="px-3 py-2 text-right whitespace-nowrap text-blue-700 dark:text-blue-400">
+                          {account.type === "Purchase From" ? (givenAmount > 0 ? `₹${givenAmount.toFixed(2)}` : "—") : (receivedAmount > 0 ? `₹${receivedAmount.toFixed(2)}` : "—")}
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap font-semibold">
+                          {totalAmount > 0 ? `+₹${totalAmount.toFixed(2)}` : "—"}
                         </td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">
-                          {totalAmount > 0 ? `₹${newBalance.toFixed(2)}` : "—"}
+                          {totalAmount > 0 || receivedAmount > 0 || givenAmount > 0 || existingBill ? `₹${newBalance.toFixed(2)}` : "—"}
                         </td>
                         <td className="px-3 py-2 text-center">
                           {existingBill ? (
                             <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300">
-                              <Warning size={12} /> Already Done
+                              <Warning size={12} /> Recreate
                             </span>
                           ) : logsCount === 0 ? (
                             <span className="text-xs text-slate-400">No Logs</span>
@@ -753,7 +803,7 @@ export default function BillsPage() {
                 >
                   {saving
                     ? `Generating ${toGenerate.length} bills...`
-                    : `Generate ${toGenerate.length} Bill${toGenerate.length !== 1 ? "s" : ""}`}
+                    : `Generate / Recreate ${toGenerate.length} Bill${toGenerate.length !== 1 ? "s" : ""}`}
                 </Button>
               </DialogFooter>
             </div>
@@ -782,6 +832,7 @@ export default function BillsPage() {
           <span>All bills: {selectedPeriodBills.length}</span>
           <span>Purchase From: {selectedPeriodPurchaseBills.length}</span>
           <span>Sale To: {selectedPeriodSaleBills.length}</span>
+          <span>Received: ₹{selectedPeriodReceivedAmount.toFixed(2)}</span>
           {!hasSelectedPeriodBills && <span>No bills found for the selected period.</span>}
         </div>
       </div>
@@ -846,6 +897,7 @@ export default function BillsPage() {
               <div>All bills: {selectedPeriodBills.length}</div>
               <div>Purchase From: {selectedPeriodPurchaseBills.length}</div>
               <div>Sale To: {selectedPeriodSaleBills.length}</div>
+              <div>Received: ₹{selectedPeriodReceivedAmount.toFixed(2)}</div>
             </div>
           </div>
 
@@ -860,8 +912,33 @@ export default function BillsPage() {
         </DialogContent>
       </Dialog>
 
+      <div className="lg:hidden mb-4">
+        <div className="flex rounded-lg border bg-slate-100 dark:bg-slate-800 p-1">
+          <button
+            type="button"
+            onClick={() => setMobileTab("purchase")}
+            className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${mobileTab === "purchase"
+              ? "bg-white dark:bg-slate-900 shadow-sm text-slate-900 dark:text-slate-100"
+              : "text-slate-500 dark:text-slate-400"
+              }`}
+          >
+            Purchase From ({purchaseBills.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab("sale")}
+            className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${mobileTab === "sale"
+              ? "bg-white dark:bg-slate-900 shadow-sm text-slate-900 dark:text-slate-100"
+              : "text-slate-500 dark:text-slate-400"
+              }`}
+          >
+            Sale To ({saleBills.length})
+          </button>
+        </div>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-md border bg-white dark:bg-slate-900">
+        <div className={`rounded-md border bg-white dark:bg-slate-900 ${mobileTab !== "purchase" ? "hidden lg:block" : ""}`}>
           <div className="border-b px-4 py-3">
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Purchase From</h2>
           </div>
@@ -875,6 +952,7 @@ export default function BillsPage() {
                   <TableHead className="text-right">Buffalo (L)</TableHead>
                   <TableHead className="text-right">Amount (₹)</TableHead>
                   <TableHead className="text-right">Prev Bal (₹)</TableHead>
+                  <TableHead className="text-right">Given (₹)</TableHead>
                   <TableHead className="text-right">New Bal (₹)</TableHead>
                   <TableHead className="w-17.5 text-right">Del</TableHead>
                 </TableRow>
@@ -882,11 +960,11 @@ export default function BillsPage() {
               <TableBody>
                 {loadingBills ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24 text-slate-400">Loading bills...</TableCell>
+                    <TableCell colSpan={9} className="text-center h-24 text-slate-400">Loading bills...</TableCell>
                   </TableRow>
                 ) : purchaseBills.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24 text-slate-500">
+                    <TableCell colSpan={9} className="text-center h-24 text-slate-500">
                       No purchase from bills yet.
                     </TableCell>
                   </TableRow>
@@ -900,11 +978,14 @@ export default function BillsPage() {
                       <TableCell className="font-medium">{bill.accountName}</TableCell>
                       <TableCell className="text-right">{bill.totalCowQty.toFixed(1)}</TableCell>
                       <TableCell className="text-right">{bill.totalBuffaloQty.toFixed(1)}</TableCell>
-                      <TableCell className="text-right font-medium text-green-700 dark:text-green-400">
-                        +₹{bill.totalMilkAmount.toFixed(2)}
+                      <TableCell className="text-right font-medium">
+                        ₹{bill.totalMilkAmount.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right text-slate-500">
                         ₹{bill.previousBalanceAtGeneration.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right text-blue-700 dark:text-blue-400">
+                        ₹{(bill.givenAmount ?? 0).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right font-bold">₹{bill.newBalance.toFixed(2)}</TableCell>
                       <TableCell className="text-right">
@@ -920,7 +1001,7 @@ export default function BillsPage() {
           </div>
         </div>
 
-        <div className="rounded-md border bg-white dark:bg-slate-900">
+        <div className={`rounded-md border bg-white dark:bg-slate-900 ${mobileTab !== "sale" ? "hidden lg:block" : ""}`}>
           <div className="border-b px-4 py-3">
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Sale To</h2>
           </div>
@@ -934,6 +1015,7 @@ export default function BillsPage() {
                   <TableHead className="text-right">Buffalo (L)</TableHead>
                   <TableHead className="text-right">Amount (₹)</TableHead>
                   <TableHead className="text-right">Prev Bal (₹)</TableHead>
+                  <TableHead className="text-right">Received (₹)</TableHead>
                   <TableHead className="text-right">New Bal (₹)</TableHead>
                   <TableHead className="w-17.5 text-right">Del</TableHead>
                 </TableRow>
@@ -941,11 +1023,11 @@ export default function BillsPage() {
               <TableBody>
                 {loadingBills ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24 text-slate-400">Loading bills...</TableCell>
+                    <TableCell colSpan={9} className="text-center h-24 text-slate-400">Loading bills...</TableCell>
                   </TableRow>
                 ) : saleBills.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24 text-slate-500">
+                    <TableCell colSpan={9} className="text-center h-24 text-slate-500">
                       No sale to bills yet.
                     </TableCell>
                   </TableRow>
@@ -959,11 +1041,15 @@ export default function BillsPage() {
                       <TableCell className="font-medium">{bill.accountName}</TableCell>
                       <TableCell className="text-right">{bill.totalCowQty.toFixed(1)}</TableCell>
                       <TableCell className="text-right">{bill.totalBuffaloQty.toFixed(1)}</TableCell>
-                      <TableCell className="text-right font-medium text-green-700 dark:text-green-400">
-                        +₹{bill.totalMilkAmount.toFixed(2)}
+                      
+                      <TableCell className="text-right font-medium">
+                        ₹{bill.totalMilkAmount.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right text-slate-500">
                         ₹{bill.previousBalanceAtGeneration.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right text-blue-700 dark:text-blue-400">
+                        ₹{(bill.receivedAmount ?? 0).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right font-bold">₹{bill.newBalance.toFixed(2)}</TableCell>
                       <TableCell className="text-right">

@@ -219,7 +219,7 @@ If Firestore rejects the write, `onSnapshot` automatically reconciles UI back to
 | Login/Signup | `/` | Email/password auth for dairy users |
 | Dashboard | `/dashboard` | Live stats: account counts, logs today, balance summary |
 | Accounts | `/dashboard/accounts` | CRUD for all accounts; balance shown live |
-| Milk Logs | `/dashboard/logs` | Daily milk entries with live auto-calculated amount |
+| Milk Logs | `/dashboard/logs` | Daily milk entries with live auto-calculated amount; add-log popup uses a searchable account picker, sticky time period, and a right-side recent-logs confirmation panel; the table also supports date and period filters |
 | Receipts | `/dashboard/receipts` | Payment records; balance auto-updated on save/delete |
 | Bills | `/dashboard/bills` | Generate Dassiya for ALL accounts at once |
 | Rate Settings | `/dashboard/rates` | Configure all 8 milk rate combinations |
@@ -243,6 +243,7 @@ If Firestore rejects the write, `onSnapshot` automatically reconciles UI back to
   - Export type options are **All Bills**, **Purchase From**, and **Sale To**
   - The selected PDF includes **account-wise statement tables** for the period, with DATE and MORNING/EVENING columns like the printed sample
   - The selected PDF is generated through a hidden browser print iframe so the user can save it as PDF without popup blockers
+  - If a bill already exists for the selected account + period, the Generate action now recreates it after reevaluating the current logs and received receipts for that period
 
 **Duplicate Prevention:** A bill cannot be generated for the same account + period twice. The "Already Done" check runs from local cache (zero network). The Preview button is disabled and a red warning shown if duplicate detected.
 
@@ -299,4 +300,8 @@ npm run build
 - **`.env.local` must not be committed** — contains Firebase API keys.
 - The `previousBalance` field on accounts is the **single source of truth** for balances. It is updated by receipts and bills only — never edited directly through the accounts form after initial setup (unless correcting an entry via edit).
 - The `amount` field on each `MilkLog` is calculated and **stored at save time** using the rates that were active at that moment. Changing rates later does NOT retroactively change old log amounts.
+- The Add Milk Log popup now stays open after saving, keeps the selected time period until manually changed, shows the last 5 logs on the right for confirmation, and surfaces a success/error toast after save.
+- The Milk Logs page table now includes date and period filters, plus a clear action to reset the list.
+- Bills generation can now recreate an existing period bill, and bill previews/tables show the received amount for the selected period.
+- Bills page now shows the milk amount direction by account type: Purchase From is displayed as Taken and Sale To as Given, across the preview table, generated tables, and PDF output.
 - Bills page now supports browser-based PDF export through a single popup-driven control, and the exported PDF now shows account-wise statements with DATE, MORNING, and EVENING columns for the selected period.
