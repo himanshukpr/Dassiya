@@ -8,6 +8,7 @@ import Link from "next/link";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import { Button } from "@/components/ui/button";
+import { useTheme } from "next-themes";
 import { 
   Users, 
   ListBullets, 
@@ -16,7 +17,9 @@ import {
   SignOut, 
   List,
   X,
-  GearSix
+  GearSix,
+  Sun,
+  Moon
 } from "@phosphor-icons/react";
 
 const navigation = [
@@ -37,6 +40,9 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { resolvedTheme, setTheme } = useTheme();
+
+  const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark");
 
   useEffect(() => {
     if (!loading && !user) {
@@ -71,9 +77,18 @@ export default function DashboardLayout({
       >
         <div className="flex h-16 items-center justify-between px-6 border-b border-slate-200 dark:border-slate-700">
           <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">Dassiya</span>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
-            <X size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleTheme}
+              title={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 transition-colors"
+            >
+              {resolvedTheme === "dark" ? <Sun size={20} weight="fill" /> : <Moon size={20} weight="fill" />}
+            </button>
+            <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
+              <X size={24} />
+            </button>
+          </div>
         </div>
         <nav className="mt-6 px-4 space-y-1">
           {navigation.map((item) => {
@@ -117,7 +132,13 @@ export default function DashboardLayout({
             <List size={24} />
           </button>
           <span className="text-lg font-semibold">Dassiya</span>
-          <div className="w-6" /> {/* Spacer */}
+          <button
+            onClick={toggleTheme}
+            title={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 transition-colors"
+          >
+            {resolvedTheme === "dark" ? <Sun size={20} weight="fill" /> : <Moon size={20} weight="fill" />}
+          </button>
         </header>
         <main className="flex-1 overflow-y-auto p-6">
           {children}
