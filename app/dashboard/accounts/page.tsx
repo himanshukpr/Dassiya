@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAppData } from "@/components/providers/AppDataStore";
-import type { Account } from "@/components/providers/AppDataStore";
+import { useAppData, DEFAULT_RATES, type Account, type Rates } from "@/components/providers/AppDataStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +19,37 @@ import {
 } from "@/components/ui/table";
 import { Pencil, Trash } from "@phosphor-icons/react";
 
+type RateMode = "global" | "custom";
+
+interface RateField {
+  key: keyof Rates;
+  label: string;
+  description: string;
+}
+
+const PURCHASE_RATE_FIELDS: RateField[] = [
+  { key: "cowMorningPurchase", label: "Cow - Morning", description: "Rate per litre" },
+  { key: "cowEveningPurchase", label: "Cow - Evening", description: "Rate per litre" },
+  { key: "buffaloMorningPurchase", label: "Buffalo - Morning", description: "Rate per fat unit" },
+  { key: "buffaloEveningPurchase", label: "Buffalo - Evening", description: "Rate per fat unit" },
+  { key: "sapretaMorningPurchase", label: "Sapreta - Morning", description: "Rate per litre" },
+  { key: "sapretaEveningPurchase", label: "Sapreta - Evening", description: "Rate per litre" },
+];
+
+const SALE_RATE_FIELDS: RateField[] = [
+  { key: "cowMorningSale", label: "Cow - Morning", description: "Rate per litre" },
+  { key: "cowEveningSale", label: "Cow - Evening", description: "Rate per litre" },
+  { key: "buffaloMorningSale", label: "Buffalo - Morning", description: "Rate per fat unit" },
+  { key: "buffaloEveningSale", label: "Buffalo - Evening", description: "Rate per fat unit" },
+  { key: "sapretaMorningSale", label: "Sapreta - Morning", description: "Rate per litre" },
+  { key: "sapretaEveningSale", label: "Sapreta - Evening", description: "Rate per litre" },
+];
+
+const createDefaultRateForm = (overrides?: Partial<Rates> | null) => ({
+  ...DEFAULT_RATES,
+  ...(overrides ?? {}),
+});
+
 export default function AccountsPage() {
   const { accounts, loadingAccounts, addAccount, updateAccount, deleteAccount } = useAppData();
 
@@ -32,6 +62,8 @@ export default function AccountsPage() {
   const [type, setType] = useState<"Purchase From" | "Sale To">("Purchase From");
   const [mobile, setMobile] = useState("");
   const [previousBalance, setPreviousBalance] = useState("");
+  const [rateMode, setRateMode] = useState<RateMode>("global");
+  const [rateForm, setRateForm] = useState<Rates>(DEFAULT_RATES);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +73,7 @@ export default function AccountsPage() {
       type,
       mobile,
       previousBalance: parseFloat(previousBalance) || 0,
+      rateOverrides: rateMode === "custom" ? rateForm : null,
     };
     if (editingId) {
       await updateAccount(editingId, data);
@@ -58,6 +91,8 @@ export default function AccountsPage() {
     setType(account.type);
     setMobile(account.mobile);
     setPreviousBalance(account.previousBalance.toString());
+    setRateMode(account.rateOverrides ? "custom" : "global");
+    setRateForm(createDefaultRateForm(account.rateOverrides));
     setIsDialogOpen(true);
   };
 
@@ -72,6 +107,8 @@ export default function AccountsPage() {
     setType("Purchase From");
     setMobile("");
     setPreviousBalance("");
+    setRateMode("global");
+    setRateForm(DEFAULT_RATES);
   };
 
   return (
@@ -82,7 +119,7 @@ export default function AccountsPage() {
           <DialogTrigger asChild>
             <Button>Add Account</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] w-full max-w-full overflow-y-auto p-4 sm:max-w-lg sm:p-6">
             <DialogHeader>
               <DialogTitle>{editingId ? "Edit Account" : "Add New Account"}</DialogTitle>
             </DialogHeader>
@@ -109,8 +146,56 @@ export default function AccountsPage() {
                 <Label htmlFor="balance">Previous Balance (₹)</Label>
                 <Input id="balance" type="number" step="0.01" value={previousBalance} onChange={(e) => setPreviousBalance(e.target.value)} required />
               </div>
-              <DialogFooter>
-                <Button type="submit" disabled={saving}>
+
+              <div className="space-y-2">
+                <Label>Rates for this account</Label>
+                <Select value={rateMode} onValueChange={(val: RateMode) => setRateMode(val)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="global">Use global rates</SelectItem>
+                    <SelectItem value="custom">Use custom rates for this account</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {rateMode === "custom" && (
+                <div className="space-y-3 rounded-lg border bg-slate-50 p-3 dark:bg-slate-900/50 sm:p-4">
+                  <div>
+                    <p className="text-xs font-medium sm:text-sm">Custom Rate Overrides</p>
+                    <p className="text-[11px] text-slate-500 sm:text-xs">
+                      {type === "Purchase From"
+                        ? "Set purchase rates for this supplier"
+                        : "Set sale rates for this customer"}
+                    </p>
+                  </div>
+                  <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+                    {(type === "Purchase From" ? PURCHASE_RATE_FIELDS : SALE_RATE_FIELDS).map((field) => (
+                      <div key={field.key} className="space-y-1">
+                        <Label htmlFor={field.key} className="text-xs font-medium">
+                          {field.label}
+                        </Label>
+                        <Input
+                          id={field.key}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          className="text-sm"
+                          value={rateForm[field.key] ?? ""}
+                          onChange={(e) => setRateForm((prev) => ({ ...prev, [field.key]: parseFloat(e.target.value) || 0 }))}
+                        />
+                        <p className="text-[10px] text-slate-500">{field.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+                <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); }} className="w-full sm:w-auto">
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={saving} className="w-full sm:w-auto">
                   {saving ? "Saving..." : editingId ? "Update" : "Save"}
                 </Button>
               </DialogFooter>
@@ -148,13 +233,17 @@ export default function AccountsPage() {
                 <TableRow key={account.id}>
                   <TableCell className="font-medium">{account.name}</TableCell>
                   <TableCell>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      account.type === "Purchase From"
-                        ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
-                        : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-                    }`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${account.type === "Purchase From"
+                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                      : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                      }`}>
                       {account.type}
                     </span>
+                    {account.rateOverrides && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300">
+                        Custom rates
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>{account.mobile}</TableCell>
                   <TableCell className="text-right font-medium">

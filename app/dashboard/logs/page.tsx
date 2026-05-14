@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useAppData, calculateAmount } from "@/components/providers/AppDataStore";
+import { useAppData, calculateAmount, resolveAccountRates } from "@/components/providers/AppDataStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +44,10 @@ export default function LogsPage() {
   const [filterPeriod, setFilterPeriod] = useState<"All" | "Morning" | "Evening">("All");
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
+  const effectiveRates = useMemo(
+    () => resolveAccountRates(rates, selectedAccount?.rateOverrides),
+    [rates, selectedAccount]
+  );
 
   const filteredAccounts = useMemo(() => {
     const query = accountSearch.trim().toLowerCase();
@@ -57,14 +61,25 @@ export default function LogsPage() {
     });
   }, [accounts, accountSearch]);
 
-  const recentLogs = useMemo(() => logs.slice(0, 5), [logs]);
+  const sortByCreatedAt = (a: typeof logs[0], b: typeof logs[0]) => {
+    const aTime = a.createdAt?.toMillis?.();
+    const bTime = b.createdAt?.toMillis?.();
+    if (!aTime && !bTime) return 0;
+    if (!aTime) return 1;
+    if (!bTime) return -1;
+    return bTime - aTime;
+  };
+
+  const recentLogs = useMemo(() => [...logs].sort(sortByCreatedAt).slice(0, 5), [logs]);
 
   const filteredLogs = useMemo(() => {
-    return logs.filter((log) => {
-      const matchesDate = !filterDate || log.date === filterDate;
-      const matchesPeriod = filterPeriod === "All" || log.timePeriod === filterPeriod;
-      return matchesDate && matchesPeriod;
-    });
+    return logs
+      .filter((log) => {
+        const matchesDate = !filterDate || log.date === filterDate;
+        const matchesPeriod = filterPeriod === "All" || log.timePeriod === filterPeriod;
+        return matchesDate && matchesPeriod;
+      })
+      .sort(sortByCreatedAt);
   }, [logs, filterDate, filterPeriod]);
 
   // Live amount preview — recalculates whenever any field changes
@@ -77,9 +92,9 @@ export default function LogsPage() {
       selectedAccount.type,
       parseFloat(qty) || 0,
       parseFloat(fat) || 0,
-      rates
+      effectiveRates
     );
-  }, [selectedAccount, milkType, timePeriod, qty, fat, rates]);
+  }, [selectedAccount, milkType, timePeriod, qty, fat, effectiveRates]);
 
   useEffect(() => {
     if (!toast) return;
@@ -100,7 +115,7 @@ export default function LogsPage() {
         selectedAccount.type,
         parseFloat(qty) || 0,
         parseFloat(fat) || 0,
-        rates
+        effectiveRates
       );
 
       await addLog({
@@ -289,8 +304,8 @@ export default function LogsPage() {
                             (() => {
                               if (!selectedAccount) return 0;
                               const dir = selectedAccount.type === "Purchase From" ? "Purchase" : "Sale";
-                              const key = `buffalo${timePeriod}${dir}` as keyof typeof rates;
-                              return rates[key];
+                              const key = `buffalo${timePeriod}${dir}` as keyof typeof effectiveRates;
+                              return effectiveRates[key];
                             })()
                           }/fat
                         </p>

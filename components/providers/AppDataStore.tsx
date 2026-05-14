@@ -45,6 +45,7 @@ export interface Account {
   type: "Purchase From" | "Sale To";
   mobile: string;
   previousBalance: number;
+  rateOverrides?: Partial<Rates> | null;
 }
 
 export interface MilkLog {
@@ -58,6 +59,7 @@ export interface MilkLog {
   fat: number;        // 0 for Cow
   timePeriod: "Morning" | "Evening";
   amount: number;     // auto-calculated at save time
+  createdAt?: any;    // Firestore Timestamp
 }
 
 export interface Receipt {
@@ -163,6 +165,13 @@ export function calculateAmount(
     const key = `sapreta${period}${direction}` as keyof Rates;
     return qty * rates[key];
   }
+}
+
+export function resolveAccountRates(globalRates: Rates, accountRates?: Partial<Rates> | null): Rates {
+  return {
+    ...globalRates,
+    ...(accountRates ?? {}),
+  };
 }
 
 // ─── Context shape ────────────────────────────────────────────────────────────
