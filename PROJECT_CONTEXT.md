@@ -103,9 +103,9 @@ interface MilkLog {
   accountName: string;
   accountType: "Purchase From" | "Sale To";
   date: string;              // "YYYY-MM-DD"
-  milkType: "Cow" | "Buffalo";
+  milkType: "Cow" | "Buffalo" | "Sapreta";
   qty: number;               // litres or kg
-  fat: number;               // 0 for Cow; e.g. 6.7 for Buffalo
+  fat: number;               // 0 for Cow/Sapreta; e.g. 6.7 for Buffalo
   timePeriod: "Morning" | "Evening";
   amount: number;            // AUTO-CALCULATED at save time from rate settings
 }
@@ -137,6 +137,7 @@ interface Bill {
   endDate: string;                      // "YYYY-MM-DD"
   totalCowQty: number;
   totalBuffaloQty: number;
+  totalSapretaQty: number;
   totalMilkAmount: number;              // sum of all log amounts in the period
   previousBalanceAtGeneration: number;  // snapshot of balance before bill
   newBalance: number;                   // previousBalance + totalMilkAmount
@@ -159,6 +160,11 @@ interface Rates {
   buffaloMorningSale: number;
   buffaloEveningPurchase: number;
   buffaloEveningSale: number;
+  // Sapreta milk — rate per litre (₹/L)
+  sapretaMorningPurchase: number;
+  sapretaMorningSale: number;
+  sapretaEveningPurchase: number;
+  sapretaEveningSale: number;
 }
 ```
 
@@ -179,8 +185,13 @@ Example: 10L, Fat 6.7, Rate ₹10/fat
 → 10 × floor(6.7) × 10 = 10 × 6 × 10 = ₹600
 ```
 
+### Sapreta Milk
+```
+Amount = Quantity (L) × Rate per litre
+```
+
 The rate used depends on:
-- **Milk type**: Cow / Buffalo
+- **Milk type**: Cow / Buffalo / Sapreta
 - **Time period**: Morning / Evening  
 - **Account type**: Purchase From → uses "Purchase" rate; Sale To → uses "Sale" rate
 
@@ -222,7 +233,7 @@ If Firestore rejects the write, `onSnapshot` automatically reconciles UI back to
 | Milk Logs | `/dashboard/logs` | Daily milk entries with live auto-calculated amount; add-log popup uses a searchable account picker, sticky time period, and a right-side recent-logs confirmation panel; the table also supports date and period filters |
 | Receipts | `/dashboard/receipts` | Payment records; balance auto-updated on save/delete |
 | Bills | `/dashboard/bills` | Generate Dassiya for ALL accounts at once |
-| Rate Settings | `/dashboard/rates` | Configure all 8 milk rate combinations |
+| Rate Settings | `/dashboard/rates` | Configure all 12 milk rate combinations (Cow, Buffalo, Sapreta × Morning/Evening × Purchase/Sale) |
 
 ---
 

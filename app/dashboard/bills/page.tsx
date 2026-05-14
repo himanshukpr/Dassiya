@@ -82,10 +82,11 @@ export default function BillsPage() {
         .filter((receipt) => receipt.accountId === account.id && receipt.type === "Payment Given")
         .reduce((sum, receipt) => sum + (receipt.amount ?? 0), 0);
 
-      let totalCow = 0, totalBuffalo = 0, totalAmount = 0;
+      let totalCow = 0, totalBuffalo = 0, totalSapreta = 0, totalAmount = 0;
       logsInPeriod.forEach((l) => {
         if (l.milkType === "Cow") totalCow += l.qty;
-        else totalBuffalo += l.qty;
+        else if (l.milkType === "Buffalo") totalBuffalo += l.qty;
+        else totalSapreta += l.qty;
         totalAmount += l.amount ?? 0;
       });
 
@@ -103,6 +104,7 @@ export default function BillsPage() {
         logsCount: logsInPeriod.length,
         totalCow,
         totalBuffalo,
+        totalSapreta,
         totalAmount,
         receivedAmount,
         givenAmount,
@@ -224,7 +226,7 @@ export default function BillsPage() {
     if (items.length === 0) {
       return `
         <tr>
-          <td colspan="8" class="muted" style="text-align:center; padding: 16px;">No bills in this section.</td>
+          <td colspan="9" class="muted" style="text-align:center; padding: 16px;">No bills in this section.</td>
         </tr>
       `;
     }
@@ -244,6 +246,7 @@ export default function BillsPage() {
         </td>
         <td class="text-right">${bill.totalCowQty.toFixed(1)}</td>
         <td class="text-right">${bill.totalBuffaloQty.toFixed(1)}</td>
+        <td class="text-right">${(bill.totalSapretaQty ?? 0).toFixed(1)}</td>
         <td class="text-right">₹${paymentAmount.toFixed(2)}</td>
         <td class="text-right">₹${bill.totalMilkAmount.toFixed(2)}</td>
         <td class="text-right">₹${bill.previousBalanceAtGeneration.toFixed(2)}</td>
@@ -322,19 +325,25 @@ export default function BillsPage() {
         if (log.milkType === "Cow") {
           row.MorningCowQty += qty;
           row.MorningCowAmt += amount;
-        } else {
+        } else if (log.milkType === "Buffalo") {
           row.MorningBuffaloQty += qty;
           row.MorningBuffaloFat = fat || row.MorningBuffaloFat;
           row.MorningBuffaloAmt += amount;
+        } else {
+          row.MorningCowQty += qty;
+          row.MorningCowAmt += amount;
         }
       } else {
         if (log.milkType === "Cow") {
           row.EveningCowQty += qty;
           row.EveningCowAmt += amount;
-        } else {
+        } else if (log.milkType === "Buffalo") {
           row.EveningBuffaloQty += qty;
           row.EveningBuffaloFat = fat || row.EveningBuffaloFat;
           row.EveningBuffaloAmt += amount;
+        } else {
+          row.EveningCowQty += qty;
+          row.EveningCowAmt += amount;
         }
       }
 
@@ -591,6 +600,7 @@ export default function BillsPage() {
           <div class="bill-grid">
             <div class="card"><p class="card-label">Cow Qty</p><p class="card-value">${bill.totalCowQty.toFixed(1)}</p></div>
             <div class="card"><p class="card-label">Buffalo Qty</p><p class="card-value">${bill.totalBuffaloQty.toFixed(1)}</p></div>
+            <div class="card"><p class="card-label">Sapreta Qty</p><p class="card-value">${(bill.totalSapretaQty ?? 0).toFixed(1)}</p></div>
             <div class="card"><p class="card-label">Previous Balance</p><p class="card-value">₹${bill.previousBalanceAtGeneration.toFixed(2)}</p></div>
           </div>
         </div>
@@ -613,7 +623,7 @@ export default function BillsPage() {
         await deleteBill(bill);
       }
 
-      const items = toGenerate.map(({ account, totalCow, totalBuffalo, totalAmount, receivedAmount, givenAmount, baseBalance, existingBill }) => {
+      const items = toGenerate.map(({ account, totalCow, totalBuffalo, totalSapreta, totalAmount, receivedAmount, givenAmount, baseBalance, existingBill }) => {
         const previousBalanceAtGeneration = existingBill
           ? baseBalance
           : account.previousBalance;
@@ -628,6 +638,7 @@ export default function BillsPage() {
             endDate: endStr,
             totalCowQty: totalCow,
             totalBuffaloQty: totalBuffalo,
+            totalSapretaQty: totalSapreta,
             totalMilkAmount: totalAmount,
             receivedAmount,
             givenAmount,
@@ -885,13 +896,14 @@ export default function BillsPage() {
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Purchase From</h2>
           </div>
           <div className="overflow-x-auto overflow-y-hidden touch-pan-x">
-            <Table className="min-w-[56rem] w-max table-fixed text-sm">
+            <Table className="min-w-5xl w-max table-fixed text-sm">
               <TableHeader>
                 <TableRow>
                   <TableHead>Period</TableHead>
                   <TableHead>Account</TableHead>
                   <TableHead className="text-right">Cow (L)</TableHead>
                   <TableHead className="text-right">Buffalo (L)</TableHead>
+                  <TableHead className="text-right">Sapreta (L)</TableHead>
                   <TableHead className="text-right">Amount (₹)</TableHead>
                   <TableHead className="text-right">Prev Bal (₹)</TableHead>
                   <TableHead className="text-right">Given (₹)</TableHead>
@@ -902,11 +914,11 @@ export default function BillsPage() {
               <TableBody>
                 {loadingBills ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center h-24 text-slate-400">Loading bills...</TableCell>
+                    <TableCell colSpan={10} className="text-center h-24 text-slate-400">Loading bills...</TableCell>
                   </TableRow>
                 ) : purchaseBills.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center h-24 text-slate-500">
+                    <TableCell colSpan={10} className="text-center h-24 text-slate-500">
                       No purchase from bills yet.
                     </TableCell>
                   </TableRow>
@@ -920,6 +932,7 @@ export default function BillsPage() {
                       <TableCell className="font-medium">{bill.accountName}</TableCell>
                       <TableCell className="text-right">{bill.totalCowQty.toFixed(1)}</TableCell>
                       <TableCell className="text-right">{bill.totalBuffaloQty.toFixed(1)}</TableCell>
+                      <TableCell className="text-right">{(bill.totalSapretaQty ?? 0).toFixed(1)}</TableCell>
                       <TableCell className="text-right font-medium">
                         ₹{bill.totalMilkAmount.toFixed(2)}
                       </TableCell>
@@ -948,13 +961,14 @@ export default function BillsPage() {
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Sale To</h2>
           </div>
           <div className="overflow-x-auto overflow-y-hidden touch-pan-x">
-            <Table className="min-w-[56rem] w-max table-fixed text-sm">
+            <Table className="min-w-5xl w-max table-fixed text-sm">
               <TableHeader>
                 <TableRow>
                   <TableHead>Period</TableHead>
                   <TableHead>Account</TableHead>
                   <TableHead className="text-right">Cow (L)</TableHead>
                   <TableHead className="text-right">Buffalo (L)</TableHead>
+                  <TableHead className="text-right">Sapreta (L)</TableHead>
                   <TableHead className="text-right">Amount (₹)</TableHead>
                   <TableHead className="text-right">Prev Bal (₹)</TableHead>
                   <TableHead className="text-right">Received (₹)</TableHead>
@@ -965,11 +979,11 @@ export default function BillsPage() {
               <TableBody>
                 {loadingBills ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center h-24 text-slate-400">Loading bills...</TableCell>
+                    <TableCell colSpan={10} className="text-center h-24 text-slate-400">Loading bills...</TableCell>
                   </TableRow>
                 ) : saleBills.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center h-24 text-slate-500">
+                    <TableCell colSpan={10} className="text-center h-24 text-slate-500">
                       No sale to bills yet.
                     </TableCell>
                   </TableRow>
@@ -983,7 +997,8 @@ export default function BillsPage() {
                       <TableCell className="font-medium">{bill.accountName}</TableCell>
                       <TableCell className="text-right">{bill.totalCowQty.toFixed(1)}</TableCell>
                       <TableCell className="text-right">{bill.totalBuffaloQty.toFixed(1)}</TableCell>
-                      
+                      <TableCell className="text-right">{(bill.totalSapretaQty ?? 0).toFixed(1)}</TableCell>
+
                       <TableCell className="text-right font-medium">
                         ₹{bill.totalMilkAmount.toFixed(2)}
                       </TableCell>

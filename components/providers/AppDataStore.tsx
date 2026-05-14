@@ -53,7 +53,7 @@ export interface MilkLog {
   accountName: string;
   accountType: "Purchase From" | "Sale To";
   date: string;
-  milkType: "Cow" | "Buffalo";
+  milkType: "Cow" | "Buffalo" | "Sapreta";
   qty: number;
   fat: number;        // 0 for Cow
   timePeriod: "Morning" | "Evening";
@@ -79,6 +79,7 @@ export interface Bill {
   endDate: string;
   totalCowQty: number;
   totalBuffaloQty: number;
+  totalSapretaQty: number;
   totalMilkAmount: number;
   receivedAmount: number;
   givenAmount: number;
@@ -109,6 +110,11 @@ export interface Rates {
   buffaloMorningSale: number;
   buffaloEveningPurchase: number;
   buffaloEveningSale: number;
+  // Sapreta — rate per litre
+  sapretaMorningPurchase: number;
+  sapretaMorningSale: number;
+  sapretaEveningPurchase: number;
+  sapretaEveningSale: number;
 }
 
 export const DEFAULT_RATES: Rates = {
@@ -120,6 +126,10 @@ export const DEFAULT_RATES: Rates = {
   buffaloMorningSale: 10,
   buffaloEveningPurchase: 10,
   buffaloEveningSale: 10,
+  sapretaMorningPurchase: 0,
+  sapretaMorningSale: 0,
+  sapretaEveningPurchase: 0,
+  sapretaEveningSale: 0,
 };
 
 // ─── Amount calculator ────────────────────────────────────────────────────────
@@ -131,7 +141,7 @@ export const DEFAULT_RATES: Rates = {
  * Buffalo: amount = qty × floor(fat) × ratePerFat
  */
 export function calculateAmount(
-  milkType: "Cow" | "Buffalo",
+  milkType: "Cow" | "Buffalo" | "Sapreta",
   timePeriod: "Morning" | "Evening",
   accountType: "Purchase From" | "Sale To",
   qty: number,
@@ -144,11 +154,14 @@ export function calculateAmount(
   if (milkType === "Cow") {
     const key = `cow${period}${direction}` as keyof Rates;
     return qty * rates[key];
-  } else {
+  } else if (milkType === "Buffalo") {
     const key = `buffalo${period}${direction}` as keyof Rates;
     const ratePerFat = rates[key];
     const effectiveFat = Math.floor(fat);   // 6.7 → 6, 5 → 5
     return qty * effectiveFat * ratePerFat;
+  } else {
+    const key = `sapreta${period}${direction}` as keyof Rates;
+    return qty * rates[key];
   }
 }
 

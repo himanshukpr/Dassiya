@@ -35,11 +35,10 @@ export default function LogsPage() {
   const [accountId, setAccountId] = useState("");
   const [accountSearch, setAccountSearch] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [milkType, setMilkType] = useState<"Cow" | "Buffalo">("Buffalo");
+  const [milkType, setMilkType] = useState<"Cow" | "Buffalo" | "Sapreta">("Buffalo");
   const [qty, setQty] = useState("");
   const [fat, setFat] = useState("");
   const [timePeriod, setTimePeriod] = useState<"Morning" | "Evening">("Morning");
-
   // Table filters
   const [filterDate, setFilterDate] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"All" | "Morning" | "Evening">("All");
@@ -242,11 +241,12 @@ export default function LogsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Milk Type</Label>
-                    <Select value={milkType} onValueChange={(val: "Buffalo" | "Cow") => { setMilkType(val); setFat(""); }}>
+                    <Select value={milkType} onValueChange={(val: "Buffalo" | "Cow" | "Sapreta") => { setMilkType(val); setFat(""); }}>
                       <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Buffalo">Buffalo</SelectItem>
                         <SelectItem value="Cow">Cow</SelectItem>
+                        <SelectItem value="Sapreta">Sapreta</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
