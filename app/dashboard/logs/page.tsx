@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAppData, calculateAmount, resolveAccountRates } from "@/components/providers/AppDataStore";
+import type { MilkLog } from "@/components/providers/AppDataStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +18,7 @@ import {
   Table, TableBody, TableCell, TableHead,
   TableHeader, TableRow,
 } from "@/components/ui/table";
-import { CheckCircle, MagnifyingGlass, Trash, WarningCircle } from "@phosphor-icons/react";
+import { CheckCircle, MagnifyingGlass, Pencil, Trash, WarningCircle } from "@phosphor-icons/react";
 
 type ToastState = {
   message: string;
@@ -25,20 +26,32 @@ type ToastState = {
 };
 
 export default function LogsPage() {
-  const { accounts, logs, rates, loadingLogs, addLog, deleteLog } = useAppData();
+  const { accounts, logs, rates, loadingLogs, addLog, updateLog, deleteLog } = useAppData();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [editingLog, setEditingLog] = useState<MilkLog | null>(null);
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const getCached = (key: string, fallback: string) => {
+    if (typeof window === "undefined") return fallback;
+    return sessionStorage.getItem(key) ?? fallback;
+  };
+  const setCached = (key: string, value: string) => {
+    if (typeof window === "undefined") return;
+    sessionStorage.setItem(key, value);
+  };
 
   // Form state
   const [accountId, setAccountId] = useState("");
   const [accountSearch, setAccountSearch] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => getCached("logs_date", today));
   const [milkType, setMilkType] = useState<"Cow" | "Buffalo" | "Sapreta">("Buffalo");
   const [qty, setQty] = useState("");
   const [fat, setFat] = useState("");
-  const [timePeriod, setTimePeriod] = useState<"Morning" | "Evening">("Morning");
+  const [timePeriod, setTimePeriod] = useState<"Morning" | "Evening">(() => getCached("logs_timePeriod", "Morning") as "Morning" | "Evening");
   // Table filters
   const [filterDate, setFilterDate] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"All" | "Morning" | "Evening">("All");
@@ -96,12 +109,28 @@ export default function LogsPage() {
     );
   }, [selectedAccount, milkType, timePeriod, qty, fat, effectiveRates]);
 
+  useEffect(() => { setCached("logs_date", date); }, [date]);
+
+  useEffect(() => { setCached("logs_timePeriod", timePeriod); }, [timePeriod]);
+
   useEffect(() => {
     if (!toast) return;
 
     const timer = window.setTimeout(() => setToast(null), 3000);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  const handleEdit = (log: MilkLog) => {
+    setEditingLog(log);
+    setAccountId(log.accountId);
+    setAccountSearch(log.accountName);
+    setDate(log.date);
+    setMilkType(log.milkType);
+    setQty(String(log.qty));
+    setFat(log.milkType === "Buffalo" ? String(log.fat) : "");
+    setTimePeriod(log.timePeriod);
+    setIsDialogOpen(true);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +147,7 @@ export default function LogsPage() {
         effectiveRates
       );
 
-      await addLog({
+      const data = {
         accountId,
         accountName: selectedAccount.name,
         accountType: selectedAccount.type,
@@ -128,15 +157,26 @@ export default function LogsPage() {
         fat: milkType === "Buffalo" ? parseFloat(fat) : 0,
         timePeriod,
         amount,
-      });
+      };
 
-      setToast({
-        message: `Milk log added for ${selectedAccount.name}.`,
-        variant: "success",
-      });
-      resetForm({ preserveTimePeriod: true });
+      if (editingLog) {
+        await updateLog(editingLog.id, data);
+        setToast({
+          message: `Milk log updated for ${selectedAccount.name}.`,
+          variant: "success",
+        });
+      } else {
+        await addLog(data);
+        setToast({
+          message: `Milk log added for ${selectedAccount.name}.`,
+          variant: "success",
+        });
+      }
+
+      setEditingLog(null);
+      resetForm({ preserveCache: true });
     } catch (error) {
-      console.error("addLog failed:", error);
+      console.error("save log failed:", error);
       setToast({
         message: "Could not save the milk log. Please try again.",
         variant: "error",
@@ -151,15 +191,19 @@ export default function LogsPage() {
     await deleteLog(id);
   };
 
-  const resetForm = ({ preserveTimePeriod = false }: { preserveTimePeriod?: boolean } = {}) => {
+  const resetForm = ({ preserveCache = false }: { preserveCache?: boolean } = {}) => {
     setAccountId("");
     setAccountSearch("");
-    setDate(new Date().toISOString().split("T")[0]);
+    if (!preserveCache) {
+      setDate(today);
+      setCached("logs_date", today);
+    }
     setMilkType("Buffalo");
     setQty("");
     setFat("");
-    if (!preserveTimePeriod) {
+    if (!preserveCache) {
       setTimePeriod("Morning");
+      setCached("logs_timePeriod", "Morning");
     }
   };
 
@@ -172,7 +216,7 @@ export default function LogsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Milk Logs</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingLog(null); }}>
           <DialogTrigger asChild>
             <Button>Add Milk Log</Button>
           </DialogTrigger>
@@ -182,9 +226,9 @@ export default function LogsPage() {
             onPointerDownOutside={(event) => event.preventDefault()}
           >
             <DialogHeader>
-              <DialogTitle>Add Milk Log</DialogTitle>
+              <DialogTitle>{editingLog ? "Edit Milk Log" : "Add Milk Log"}</DialogTitle>
               <DialogDescription className="sr-only">
-                Add a new milk log by selecting the time period, account, date, milk type, quantity, and fat if needed.
+                {editingLog ? "Edit the milk log entry." : "Add a new milk log by selecting the time period, account, date, milk type, quantity, and fat if needed."}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,1fr)] lg:gap-6">
@@ -282,10 +326,17 @@ export default function LogsPage() {
                       </Label>
                       <Input
                         id="fat"
-                        type="number"
-                        step="0.1"
+                        type="text"
+                        inputMode="decimal"
                         value={fat}
-                        onChange={(e) => setFat(e.target.value)}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9.]/g, "");
+                          if (!raw.includes(".") && raw.length >= 2) {
+                            setFat(raw.slice(0, -1) + "." + raw.slice(-1));
+                          } else {
+                            setFat(raw);
+                          }
+                        }}
                         required
                       />
                     </div>
@@ -321,7 +372,7 @@ export default function LogsPage() {
 
                 <DialogFooter className="px-0 pb-0">
                   <Button type="submit" className="w-full sm:w-auto" disabled={!accountId || saving}>
-                    {saving ? "Saving..." : "Save Log"}
+                    {saving ? "Saving..." : editingLog ? "Update Log" : "Save Log"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -423,7 +474,7 @@ export default function LogsPage() {
               <TableHead className="text-right">Qty</TableHead>
               <TableHead className="text-right">Fat %</TableHead>
               <TableHead className="text-right">Amount (₹)</TableHead>
-              <TableHead className="w-[70px] text-right">Del</TableHead>
+              <TableHead className="w-[100px] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -461,9 +512,14 @@ export default function LogsPage() {
                     ₹{(log.amount ?? 0).toFixed(2)}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(log.id)}>
-                      <Trash className="h-4 w-4 text-red-500" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleEdit(log)}>
+                        <Pencil className="h-4 w-4 text-slate-500" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(log.id)}>
+                        <Trash className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

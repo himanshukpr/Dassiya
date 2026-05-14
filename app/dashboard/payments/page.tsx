@@ -21,7 +21,7 @@ import {
   Table, TableBody, TableCell, TableHead,
   TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Trash, CaretUpDown, Check, ArrowDown } from "@phosphor-icons/react";
+import { Trash, CaretUpDown, Check, ArrowDown, Pencil } from "@phosphor-icons/react";
 
 // ─── Searchable Account Combobox ──────────────────────────────────────────────
 function AccountCombobox({
@@ -101,10 +101,11 @@ function AccountCombobox({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ReceiptsPage() {
-  const { accounts, receipts, loadingReceipts, addReceipt, deleteReceipt } = useAppData();
+  const { accounts, receipts, loadingReceipts, addReceipt, updateReceipt, deleteReceipt } = useAppData();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingReceipt, setEditingReceipt] = useState<Receipt | null>(null);
 
   const [accountId, setAccountId] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -122,28 +123,42 @@ export default function ReceiptsPage() {
   // Receipt always SUBTRACTS from the balance (clears dues)
   const newBalance =
     selectedAccount && amount
-      ? selectedAccount.previousBalance - (parseFloat(amount) || 0)
+      ? editingReceipt
+        ? selectedAccount.previousBalance + editingReceipt.amount - (parseFloat(amount) || 0)
+        : selectedAccount.previousBalance - (parseFloat(amount) || 0)
       : null;
+
+  const handleEdit = (receipt: Receipt) => {
+    setEditingReceipt(receipt);
+    setAccountId(receipt.accountId);
+    setDate(receipt.date);
+    setAmount(String(receipt.amount));
+    setIsDialogOpen(true);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAccount || newBalance === null || !paymentType) return;
     setSaving(true);
 
-    await addReceipt(
-      {
-        accountId,
-        accountName: selectedAccount.name,
-        date,
-        amount: parseFloat(amount),
-        type: paymentType,
-        balanceAction: "Subtract",   // always subtract
-      },
-      newBalance
-    );
+    const data = {
+      accountId,
+      accountName: selectedAccount.name,
+      date,
+      amount: parseFloat(amount),
+      type: paymentType,
+      balanceAction: "Subtract" as const,
+    };
+
+    if (editingReceipt) {
+      await updateReceipt(editingReceipt.id, data, newBalance);
+    } else {
+      await addReceipt(data, newBalance);
+    }
 
     setSaving(false);
     setIsDialogOpen(false);
+    setEditingReceipt(null);
     resetForm();
   };
 
@@ -163,14 +178,14 @@ export default function ReceiptsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Payments</h1>
 
-        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { resetForm(); setEditingReceipt(null); } }}>
           <DialogTrigger asChild>
             <Button>Add Payment</Button>
           </DialogTrigger>
 
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Add Payment</DialogTitle>
+              <DialogTitle>{editingReceipt ? "Edit Payment" : "Add Payment"}</DialogTitle>
             </DialogHeader>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -178,11 +193,17 @@ export default function ReceiptsPage() {
               {/* Searchable account selector */}
               <div className="space-y-2">
                 <Label>Account</Label>
-                <AccountCombobox
-                  accounts={accounts}
-                  value={accountId}
-                  onChange={(id) => { setAccountId(id); setAmount(""); }}
-                />
+                {editingReceipt ? (
+                  <div className="flex h-10 w-full items-center rounded-md border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 text-sm text-slate-600 dark:text-slate-400">
+                    {editingReceipt.accountName}
+                  </div>
+                ) : (
+                  <AccountCombobox
+                    accounts={accounts}
+                    value={accountId}
+                    onChange={(id) => { setAccountId(id); setAmount(""); }}
+                  />
+                )}
               </div>
 
               {/* Auto-detected payment type info */}
@@ -262,7 +283,7 @@ export default function ReceiptsPage() {
 
               <DialogFooter>
                 <Button type="submit" disabled={!accountId || !amount || saving}>
-                  {saving ? "Saving..." : "Save Receipt"}
+                  {saving ? "Saving..." : editingReceipt ? "Update Payment" : "Save Receipt"}
                 </Button>
               </DialogFooter>
             </form>
@@ -279,7 +300,7 @@ export default function ReceiptsPage() {
               <TableHead>Account</TableHead>
               <TableHead>Payment Type</TableHead>
               <TableHead className="text-right">Amount (₹)</TableHead>
-              <TableHead className="w-[70px] text-right">Del</TableHead>
+              <TableHead className="w-[100px] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -315,9 +336,14 @@ export default function ReceiptsPage() {
                       </span>}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(receipt)}>
-                      <Trash className="h-4 w-4 text-red-500" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleEdit(receipt)}>
+                        <Pencil className="h-4 w-4 text-slate-500" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(receipt)}>
+                        <Trash className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

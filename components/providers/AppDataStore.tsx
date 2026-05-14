@@ -198,10 +198,12 @@ interface AppDataCtx {
 
   // Logs
   addLog: (data: Omit<MilkLog, "id">) => Promise<void>;
+  updateLog: (id: string, data: Omit<MilkLog, "id">) => Promise<void>;
   deleteLog: (id: string) => Promise<void>;
 
   // Receipts
   addReceipt: (data: Omit<Receipt, "id">, balanceChange: number) => Promise<void>;
+  updateReceipt: (id: string, data: Omit<Receipt, "id">, newBalance: number) => Promise<void>;
   deleteReceipt: (receipt: Receipt) => Promise<void>;
 
   // Bills
@@ -377,6 +379,15 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
     });
   }, [user]);
 
+  const updateLog = useCallback(async (id: string, data: Omit<MilkLog, "id">) => {
+    if (!user) return;
+    setLogs((prev) => prev.map((l) => (l.id === id ? { id, ...data } : l)));
+    await updateDoc(doc(db, "dairies", user.uid, "logs", id), {
+      ...data,
+      updatedAt: serverTimestamp(),
+    });
+  }, [user]);
+
   const deleteLog = useCallback(async (id: string) => {
     if (!user) return;
     setLogs((prev) => prev.filter((l) => l.id !== id));
@@ -402,6 +413,28 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
       }),
       updateDoc(doc(db, "dairies", user.uid, "accounts", data.accountId), {
         previousBalance: balanceChange,
+        updatedAt: serverTimestamp(),
+      }),
+    ]);
+  }, [user]);
+
+  const updateReceipt = useCallback(async (
+    id: string,
+    data: Omit<Receipt, "id">,
+    newBalance: number
+  ) => {
+    if (!user) return;
+    setReceipts((prev) => prev.map((r) => (r.id === id ? { id, ...data } : r)));
+    setAccounts((prev) =>
+      prev.map((a) => (a.id === data.accountId ? { ...a, previousBalance: newBalance } : a))
+    );
+    await Promise.all([
+      updateDoc(doc(db, "dairies", user.uid, "receipts", id), {
+        ...data,
+        updatedAt: serverTimestamp(),
+      }),
+      updateDoc(doc(db, "dairies", user.uid, "accounts", data.accountId), {
+        previousBalance: newBalance,
         updatedAt: serverTimestamp(),
       }),
     ]);
@@ -554,8 +587,10 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
         updateAccount,
         deleteAccount,
         addLog,
+        updateLog,
         deleteLog,
         addReceipt,
+        updateReceipt,
         deleteReceipt,
         addBill,
         addBillsBatch,
