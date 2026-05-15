@@ -179,10 +179,10 @@ Amount = Quantity (L) × Rate per litre
 
 ### Buffalo Milk
 ```
-Amount = Quantity (L) × floor(Fat%) × Rate per fat unit
+Amount = Quantity (L) × Fat% × Rate per fat unit
 
 Example: 10L, Fat 6.7, Rate ₹10/fat
-→ 10 × floor(6.7) × 10 = 10 × 6 × 10 = ₹600
+→ 10 × 6.7 × 10 = ₹670
 ```
 
 ### Sapreta Milk

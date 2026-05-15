@@ -321,7 +321,7 @@ export default function LogsPage() {
                       <Label htmlFor="fat">
                         Fat %
                         <span className="ml-2 text-xs text-slate-400 font-normal">
-                          (effective: floor({fat || "0"}) = {Math.floor(parseFloat(fat) || 0)})
+                          (entered: {fat || "0"})
                         </span>
                       </Label>
                       <Input
@@ -351,7 +351,7 @@ export default function LogsPage() {
                       <span className="font-medium">Auto-calculated Amount</span>
                       {milkType === "Buffalo" && fat && (
                         <p className="mt-0.5 text-xs text-green-600 dark:text-green-500">
-                          {qty} L × {Math.floor(parseFloat(fat))} fat × ₹{
+                          {qty} L × {parseFloat(fat).toFixed(2)} fat × ₹{
                             (() => {
                               if (!selectedAccount) return 0;
                               const dir = selectedAccount.type === "Purchase From" ? "Purchase" : "Sale";
@@ -505,7 +505,7 @@ export default function LogsPage() {
                   <TableCell className="text-right">{log.qty}</TableCell>
                   <TableCell className="text-right">
                     {log.milkType === "Buffalo" ? (
-                      <span>{log.fat} <span className="text-xs text-slate-400">(×{Math.floor(log.fat)})</span></span>
+                      <span>{(log.fat ?? 0).toFixed(2)}</span>
                     ) : "—"}
                   </TableCell>
                   <TableCell className="text-right font-semibold text-green-700 dark:text-green-400">

@@ -95,8 +95,8 @@ export interface Bill {
  *
  * For Cow milk  → rate is ₹ per litre (fixed, no fat)
  * For Buffalo   → rate is ₹ per fat unit
- *   amount = qty × floor(fat) × ratePerFat
- *   e.g. fat=6.7, ratePerFat=10 → rate = 60 → amount = qty × 60
+ *   amount = qty × fat × ratePerFat
+ *   e.g. fat=6.7, ratePerFat=10 → rate = 6.7 × 10 → amount = qty × 67
  *
  * Each value differs by time period (Morning / Evening) and
  * transaction direction (purchase / sale).
@@ -140,7 +140,7 @@ export const DEFAULT_RATES: Rates = {
  * Given the rates config and a log entry, compute the rupee amount.
  *
  * Cow   : amount = qty × rate
- * Buffalo: amount = qty × floor(fat) × ratePerFat
+ * Buffalo: amount = qty × fat × ratePerFat (use raw fat value)
  */
 export function calculateAmount(
   milkType: "Cow" | "Buffalo" | "Sapreta",
@@ -159,8 +159,7 @@ export function calculateAmount(
   } else if (milkType === "Buffalo") {
     const key = `buffalo${period}${direction}` as keyof Rates;
     const ratePerFat = rates[key];
-    const effectiveFat = Math.floor(fat);   // 6.7 → 6, 5 → 5
-    return qty * effectiveFat * ratePerFat;
+    return qty * fat * ratePerFat;
   } else {
     const key = `sapreta${period}${direction}` as keyof Rates;
     return qty * rates[key];
@@ -168,10 +167,17 @@ export function calculateAmount(
 }
 
 export function resolveAccountRates(globalRates: Rates, accountRates?: Partial<Rates> | null): Rates {
-  return {
-    ...globalRates,
-    ...(accountRates ?? {}),
-  };
+  const overrides = accountRates ?? {};
+  const resolved: Partial<Rates> = {};
+
+  (Object.keys(globalRates) as Array<keyof Rates>).forEach((key) => {
+    const v = overrides[key];
+    // If the override is a positive number, use it. If it's 0, null, undefined,
+    // or not a number, fall back to the global rate for that field.
+    resolved[key] = typeof v === "number" && v > 0 ? (v as number) : globalRates[key];
+  });
+
+  return resolved as Rates;
 }
 
 // ─── Context shape ────────────────────────────────────────────────────────────
