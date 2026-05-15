@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAppData, DEFAULT_RATES, type Account, type Rates } from "@/components/providers/AppDataStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import {
   Table, TableBody, TableCell, TableHead,
   TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Pencil, Trash } from "@phosphor-icons/react";
+import { MagnifyingGlass, Pencil, Trash } from "@phosphor-icons/react";
 
 type RateMode = "global" | "custom";
 
@@ -64,6 +64,15 @@ export default function AccountsPage() {
   const [previousBalance, setPreviousBalance] = useState("");
   const [rateMode, setRateMode] = useState<RateMode>("global");
   const [rateForm, setRateForm] = useState<Rates>(DEFAULT_RATES);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredAccounts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return accounts;
+    return accounts.filter((a) =>
+      [a.name, a.type, a.mobile].join(" ").toLowerCase().includes(query)
+    );
+  }, [accounts, searchQuery]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,9 +214,21 @@ export default function AccountsPage() {
       </div>
 
       <div className="rounded-md border bg-white dark:bg-slate-900">
+        <div className="border-b p-4">
+          <div className="relative">
+            <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, type, or mobile..."
+              className="pl-9"
+            />
+          </div>
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[50px]">#</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Mobile</TableHead>
@@ -218,19 +239,20 @@ export default function AccountsPage() {
           <TableBody>
             {loadingAccounts ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center h-24 text-slate-400">
+                <TableCell colSpan={6} className="text-center h-24 text-slate-400">
                   Loading accounts...
                 </TableCell>
               </TableRow>
-            ) : accounts.length === 0 ? (
+            ) : filteredAccounts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center h-24 text-slate-500">
-                  No accounts yet. Add one to get started.
+                <TableCell colSpan={6} className="text-center h-24 text-slate-500">
+                  {searchQuery ? "No matching accounts found." : "No accounts yet. Add one to get started."}
                 </TableCell>
               </TableRow>
             ) : (
-              accounts.map((account) => (
+              filteredAccounts.map((account, idx) => (
                 <TableRow key={account.id}>
+                  <TableCell className="text-slate-400 text-sm">{idx + 1}</TableCell>
                   <TableCell className="font-medium">{account.name}</TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${account.type === "Purchase From"

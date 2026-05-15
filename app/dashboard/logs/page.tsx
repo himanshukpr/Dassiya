@@ -55,6 +55,7 @@ export default function LogsPage() {
   // Table filters
   const [filterDate, setFilterDate] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"All" | "Morning" | "Evening">("All");
+  const [logSearch, setLogSearch] = useState("");
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
   const effectiveRates = useMemo(
@@ -86,14 +87,16 @@ export default function LogsPage() {
   const recentLogs = useMemo(() => [...logs].sort(sortByCreatedAt).slice(0, 5), [logs]);
 
   const filteredLogs = useMemo(() => {
+    const query = logSearch.trim().toLowerCase();
     return logs
       .filter((log) => {
         const matchesDate = !filterDate || log.date === filterDate;
         const matchesPeriod = filterPeriod === "All" || log.timePeriod === filterPeriod;
-        return matchesDate && matchesPeriod;
+        const matchesSearch = !query || log.accountName.toLowerCase().includes(query);
+        return matchesDate && matchesPeriod && matchesSearch;
       })
       .sort(sortByCreatedAt);
-  }, [logs, filterDate, filterPeriod]);
+  }, [logs, filterDate, filterPeriod, logSearch]);
 
   // Live amount preview — recalculates whenever any field changes
   const previewAmount = useMemo(() => {
@@ -210,6 +213,7 @@ export default function LogsPage() {
   const clearFilters = () => {
     setFilterDate("");
     setFilterPeriod("All");
+    setLogSearch("");
   };
 
   return (
@@ -427,11 +431,24 @@ export default function LogsPage() {
           <div>
             <h2 className="text-sm font-semibold">Filters</h2>
             <p className="text-xs text-muted-foreground">
-              Narrow the log list by date and time period.
+              Narrow the log list by date, period, or account name.
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-[180px_180px_auto]">
+          <div className="grid gap-3 sm:grid-cols-[200px_180px_180px_auto]">
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Search</Label>
+              <div className="relative">
+                <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={logSearch}
+                  onChange={(e) => setLogSearch(e.target.value)}
+                  placeholder="Account name..."
+                  className="pl-9"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="filter-date" className="text-xs text-muted-foreground">
                 Date
@@ -467,6 +484,7 @@ export default function LogsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[50px]">#</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Period</TableHead>
               <TableHead>Account</TableHead>
@@ -480,17 +498,18 @@ export default function LogsPage() {
           <TableBody>
             {loadingLogs ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center h-24 text-slate-400">Loading logs...</TableCell>
+                <TableCell colSpan={9} className="text-center h-24 text-slate-400">Loading logs...</TableCell>
               </TableRow>
             ) : filteredLogs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center h-24 text-slate-500">
+                <TableCell colSpan={9} className="text-center h-24 text-slate-500">
                   No logs found for the selected filters.
                 </TableCell>
               </TableRow>
             ) : (
-              filteredLogs.map((log) => (
+              filteredLogs.map((log, idx) => (
                 <TableRow key={log.id}>
+                  <TableCell className="text-slate-400 text-sm">{idx + 1}</TableCell>
                   <TableCell>{log.date}</TableCell>
                   <TableCell>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${log.timePeriod === "Morning"
