@@ -37,11 +37,26 @@ export default function LogsPage() {
 
   const getCached = (key: string, fallback: string) => {
     if (typeof window === "undefined") return fallback;
-    return sessionStorage.getItem(key) ?? fallback;
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return fallback;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.value && parsed.timestamp) {
+        const hoursElapsed = (Date.now() - parsed.timestamp) / (1000 * 60 * 60);
+        if (hoursElapsed >= 24) {
+          sessionStorage.removeItem(key);
+          return fallback;
+        }
+        return parsed.value;
+      }
+    } catch {
+      sessionStorage.removeItem(key);
+    }
+    return fallback;
   };
   const setCached = (key: string, value: string) => {
     if (typeof window === "undefined") return;
-    sessionStorage.setItem(key, value);
+    sessionStorage.setItem(key, JSON.stringify({ value, timestamp: Date.now() }));
   };
 
   // Form state
@@ -278,6 +293,10 @@ export default function LogsPage() {
                               onClick={() => {
                                 setAccountId(account.id);
                                 setAccountSearch(account.name);
+                                // Auto-fill fat if account has a fixed fat and milk type is Buffalo
+                                if (milkType === "Buffalo" && account.fixedFat != null) {
+                                  setFat(String(account.fixedFat));
+                                }
                               }}
                               className={`flex w-full items-center justify-between gap-4 border-b px-3 py-2 text-left text-sm last:border-b-0 transition-colors hover:bg-muted/60 ${active ? "bg-muted" : "bg-transparent"
                                 }`}
@@ -304,7 +323,18 @@ export default function LogsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Milk Type</Label>
-                    <Select value={milkType} onValueChange={(val: "Buffalo" | "Cow" | "Sapreta") => { setMilkType(val); setFat(""); }}>
+                    <Select
+                      value={milkType}
+                      onValueChange={(val: "Buffalo" | "Cow" | "Sapreta") => {
+                        setMilkType(val);
+                        // Auto-fill fat from account.fixedFat when switching to Buffalo
+                        if (val === "Buffalo" && selectedAccount?.fixedFat != null) {
+                          setFat(String(selectedAccount.fixedFat));
+                        } else {
+                          setFat("");
+                        }
+                      }}
+                    >
                       <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Buffalo">Buffalo</SelectItem>
@@ -322,11 +352,13 @@ export default function LogsPage() {
                   </div>
                   {milkType === "Buffalo" ? (
                     <div className="space-y-2">
-                      <Label htmlFor="fat">
+                      <Label htmlFor="fat" className="flex items-center gap-2">
                         Fat %
-                        <span className="ml-2 text-xs text-slate-400 font-normal">
-                          (entered: {fat || "0"})
-                        </span>
+                        {selectedAccount?.fixedFat != null && (
+                          <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                            Fixed: {selectedAccount.fixedFat}
+                          </span>
+                        )}
                       </Label>
                       <Input
                         id="fat"
@@ -343,6 +375,11 @@ export default function LogsPage() {
                         }}
                         required
                       />
+                      {selectedAccount?.fixedFat != null && fat === String(selectedAccount.fixedFat) && (
+                        <p className="text-[11px] text-purple-600 dark:text-purple-400">
+                          Auto-filled from account fixed fat. You can override it for this entry.
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-2" />

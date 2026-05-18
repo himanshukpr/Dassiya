@@ -92,6 +92,8 @@ interface Account {
   type: "Purchase From" | "Sale To";
   mobile: string;
   previousBalance: number;   // auto-updated by receipts and bills
+  rateOverrides?: Partial<Rates> | null; // per-account rate overrides (null = use global)
+  fixedFat?: number | null;  // fixed buffalo milk fat% for this account (null = manual entry per log)
 }
 ```
 
@@ -316,3 +318,5 @@ npm run build
 - Bills generation can now recreate an existing period bill, and bill previews/tables show the received amount for the selected period.
 - Bills page now shows the milk amount direction by account type: Purchase From is displayed as Taken and Sale To as Given, across the preview table, generated tables, and PDF output.
 - Bills page now supports browser-based PDF export through a single popup-driven control, and the exported PDF now shows account-wise statements with DATE, MORNING, and EVENING columns for the selected period.
+- Accounts now support a **Fixed Fat** field for Buffalo milk. When set, the fat field in the Add/Edit Milk Log popup auto-fills with that value whenever the account is selected (or milk type is switched to Buffalo). The user can still override it per entry. The Accounts table shows a purple "Fat X.X" badge for accounts that have a fixed fat configured.
+- **Milk Logs sessionStorage cache expiration** — The cached `date` and `timePeriod` values on the Milk Logs page now auto-expire after 24 hours (2 time periods). The cache stores `{value, timestamp}` as JSON in `sessionStorage`; on retrieval, if 24+ hours have elapsed since the timestamp, the entry is cleared and the fallback (today/Morning) is used.

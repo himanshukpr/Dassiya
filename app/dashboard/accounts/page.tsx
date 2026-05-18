@@ -64,6 +64,7 @@ export default function AccountsPage() {
   const [previousBalance, setPreviousBalance] = useState("");
   const [rateMode, setRateMode] = useState<RateMode>("global");
   const [rateForm, setRateForm] = useState<Rates>(DEFAULT_RATES);
+  const [fixedFat, setFixedFat] = useState(""); // empty = no fixed fat
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredAccounts = useMemo(() => {
@@ -83,6 +84,7 @@ export default function AccountsPage() {
       mobile,
       previousBalance: parseFloat(previousBalance) || 0,
       rateOverrides: rateMode === "custom" ? rateForm : null,
+      fixedFat: fixedFat !== "" ? parseFloat(fixedFat) || 0 : null,
     };
     if (editingId) {
       await updateAccount(editingId, data);
@@ -102,6 +104,7 @@ export default function AccountsPage() {
     setPreviousBalance(account.previousBalance.toString());
     setRateMode(account.rateOverrides ? "custom" : "global");
     setRateForm(createDefaultRateForm(account.rateOverrides));
+    setFixedFat(account.fixedFat != null ? String(account.fixedFat) : "");
     setIsDialogOpen(true);
   };
 
@@ -118,6 +121,7 @@ export default function AccountsPage() {
     setPreviousBalance("");
     setRateMode("global");
     setRateForm(DEFAULT_RATES);
+    setFixedFat("");
   };
 
   return (
@@ -154,6 +158,34 @@ export default function AccountsPage() {
               <div className="space-y-2">
                 <Label htmlFor="balance">Previous Balance (₹)</Label>
                 <Input id="balance" type="number" step="0.01" value={previousBalance} onChange={(e) => setPreviousBalance(e.target.value)} required />
+              </div>
+
+              {/* Fixed fat for buffalo milk */}
+              <div className="space-y-2">
+                <Label htmlFor="fixedFat">
+                  Fixed Fat for Buffalo Milk
+                  <span className="ml-1 text-xs font-normal text-slate-500">(optional — leave blank for manual entry)</span>
+                </Label>
+                <Input
+                  id="fixedFat"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="e.g. 6.5"
+                  value={fixedFat}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9.]/g, "");
+                    if (!raw.includes(".") && raw.length >= 2) {
+                      setFixedFat(raw.slice(0, -1) + "." + raw.slice(-1));
+                    } else {
+                      setFixedFat(raw);
+                    }
+                  }}
+                />
+                {fixedFat !== "" && (
+                  <p className="text-xs text-slate-500">
+                    When adding a Buffalo milk log for this account the fat field will auto-fill with <strong>{fixedFat}</strong>.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -264,6 +296,11 @@ export default function AccountsPage() {
                     {account.rateOverrides && (
                       <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300">
                         Custom rates
+                      </span>
+                    )}
+                    {account.fixedFat != null && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300">
+                        Fat {account.fixedFat}
                       </span>
                     )}
                   </TableCell>
