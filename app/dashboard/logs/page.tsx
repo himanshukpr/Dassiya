@@ -254,7 +254,22 @@ export default function LogsPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Time Period</Label>
-                  <Select value={timePeriod} onValueChange={(val: "Morning" | "Evening") => setTimePeriod(val)}>
+                  <Select
+                    value={timePeriod}
+                    onValueChange={(val: "Morning" | "Evening") => {
+                      setTimePeriod(val);
+                      // Re-apply fixed fat for the new period (only when Buffalo and account is selected)
+                      if (milkType === "Buffalo" && selectedAccount) {
+                        const fixedFat =
+                          val === "Morning"
+                            ? selectedAccount.fixedFatMorning
+                            : selectedAccount.fixedFatEvening;
+                        if (fixedFat != null) {
+                          setFat(String(fixedFat));
+                        }
+                      }
+                    }}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
@@ -293,9 +308,13 @@ export default function LogsPage() {
                               onClick={() => {
                                 setAccountId(account.id);
                                 setAccountSearch(account.name);
-                                // Auto-fill fat if account has a fixed fat and milk type is Buffalo
-                                if (milkType === "Buffalo" && account.fixedFat != null) {
-                                  setFat(String(account.fixedFat));
+                                // Auto-fill fat if account has a fixed fat for the current period and milk type is Buffalo
+                                if (milkType === "Buffalo") {
+                                  const fixedFat =
+                                    timePeriod === "Morning"
+                                      ? account.fixedFatMorning
+                                      : account.fixedFatEvening;
+                                  if (fixedFat != null) setFat(String(fixedFat));
                                 }
                               }}
                               className={`flex w-full items-center justify-between gap-4 border-b px-3 py-2 text-left text-sm last:border-b-0 transition-colors hover:bg-muted/60 ${active ? "bg-muted" : "bg-transparent"
@@ -327,9 +346,17 @@ export default function LogsPage() {
                       value={milkType}
                       onValueChange={(val: "Buffalo" | "Cow" | "Sapreta") => {
                         setMilkType(val);
-                        // Auto-fill fat from account.fixedFat when switching to Buffalo
-                        if (val === "Buffalo" && selectedAccount?.fixedFat != null) {
-                          setFat(String(selectedAccount.fixedFat));
+                        // Auto-fill fat from account fixed fat for the current period when switching to Buffalo
+                        if (val === "Buffalo" && selectedAccount) {
+                          const fixedFat =
+                            timePeriod === "Morning"
+                              ? selectedAccount.fixedFatMorning
+                              : selectedAccount.fixedFatEvening;
+                          if (fixedFat != null) {
+                            setFat(String(fixedFat));
+                          } else {
+                            setFat("");
+                          }
                         } else {
                           setFat("");
                         }
@@ -354,11 +381,17 @@ export default function LogsPage() {
                     <div className="space-y-2">
                       <Label htmlFor="fat" className="flex items-center gap-2">
                         Fat %
-                        {selectedAccount?.fixedFat != null && (
-                          <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
-                            Fixed: {selectedAccount.fixedFat}
-                          </span>
-                        )}
+                        {(() => {
+                          const fixedFat =
+                            timePeriod === "Morning"
+                              ? selectedAccount?.fixedFatMorning
+                              : selectedAccount?.fixedFatEvening;
+                          return fixedFat != null ? (
+                            <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                              Fixed ({timePeriod}): {fixedFat}
+                            </span>
+                          ) : null;
+                        })()}
                       </Label>
                       <Input
                         id="fat"
@@ -375,11 +408,17 @@ export default function LogsPage() {
                         }}
                         required
                       />
-                      {selectedAccount?.fixedFat != null && fat === String(selectedAccount.fixedFat) && (
-                        <p className="text-[11px] text-purple-600 dark:text-purple-400">
-                          Auto-filled from account fixed fat. You can override it for this entry.
-                        </p>
-                      )}
+                      {(() => {
+                        const fixedFat =
+                          timePeriod === "Morning"
+                            ? selectedAccount?.fixedFatMorning
+                            : selectedAccount?.fixedFatEvening;
+                        return fixedFat != null && fat === String(fixedFat) ? (
+                          <p className="text-[11px] text-purple-600 dark:text-purple-400">
+                            Auto-filled from account fixed fat for {timePeriod}. You can override it for this entry.
+                          </p>
+                        ) : null;
+                      })()}
                     </div>
                   ) : (
                     <div className="space-y-2" />

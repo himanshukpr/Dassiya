@@ -46,7 +46,8 @@ export interface Account {
   mobile: string;
   previousBalance: number;
   rateOverrides?: Partial<Rates> | null;
-  fixedFat?: number | null; // fixed buffalo milk fat for this account; null means manual entry
+  fixedFatMorning?: number | null; // fixed buffalo milk fat for morning entries; null = manual
+  fixedFatEvening?: number | null; // fixed buffalo milk fat for evening entries; null = manual
 }
 
 export interface MilkLog {

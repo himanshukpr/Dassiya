@@ -64,7 +64,8 @@ export default function AccountsPage() {
   const [previousBalance, setPreviousBalance] = useState("");
   const [rateMode, setRateMode] = useState<RateMode>("global");
   const [rateForm, setRateForm] = useState<Rates>(DEFAULT_RATES);
-  const [fixedFat, setFixedFat] = useState(""); // empty = no fixed fat
+  const [fixedFatMorning, setFixedFatMorning] = useState(""); // empty = no fixed fat for morning
+  const [fixedFatEvening, setFixedFatEvening] = useState(""); // empty = no fixed fat for evening
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredAccounts = useMemo(() => {
@@ -84,7 +85,8 @@ export default function AccountsPage() {
       mobile,
       previousBalance: parseFloat(previousBalance) || 0,
       rateOverrides: rateMode === "custom" ? rateForm : null,
-      fixedFat: fixedFat !== "" ? parseFloat(fixedFat) || 0 : null,
+      fixedFatMorning: fixedFatMorning !== "" ? parseFloat(fixedFatMorning) || 0 : null,
+      fixedFatEvening: fixedFatEvening !== "" ? parseFloat(fixedFatEvening) || 0 : null,
     };
     if (editingId) {
       await updateAccount(editingId, data);
@@ -104,7 +106,8 @@ export default function AccountsPage() {
     setPreviousBalance(account.previousBalance.toString());
     setRateMode(account.rateOverrides ? "custom" : "global");
     setRateForm(createDefaultRateForm(account.rateOverrides));
-    setFixedFat(account.fixedFat != null ? String(account.fixedFat) : "");
+    setFixedFatMorning(account.fixedFatMorning != null ? String(account.fixedFatMorning) : "");
+    setFixedFatEvening(account.fixedFatEvening != null ? String(account.fixedFatEvening) : "");
     setIsDialogOpen(true);
   };
 
@@ -121,7 +124,8 @@ export default function AccountsPage() {
     setPreviousBalance("");
     setRateMode("global");
     setRateForm(DEFAULT_RATES);
-    setFixedFat("");
+    setFixedFatMorning("");
+    setFixedFatEvening("");
   };
 
   return (
@@ -160,30 +164,53 @@ export default function AccountsPage() {
                 <Input id="balance" type="number" step="0.01" value={previousBalance} onChange={(e) => setPreviousBalance(e.target.value)} required />
               </div>
 
-              {/* Fixed fat for buffalo milk */}
+              {/* Fixed fat for buffalo milk — per period */}
               <div className="space-y-2">
-                <Label htmlFor="fixedFat">
+                <Label>
                   Fixed Fat for Buffalo Milk
                   <span className="ml-1 text-xs font-normal text-slate-500">(optional — leave blank for manual entry)</span>
                 </Label>
-                <Input
-                  id="fixedFat"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="e.g. 6.5"
-                  value={fixedFat}
-                  onChange={(e) => {
-                    const raw = e.target.value.replace(/[^0-9.]/g, "");
-                    if (!raw.includes(".") && raw.length >= 2) {
-                      setFixedFat(raw.slice(0, -1) + "." + raw.slice(-1));
-                    } else {
-                      setFixedFat(raw);
-                    }
-                  }}
-                />
-                {fixedFat !== "" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-yellow-700 dark:text-yellow-400">🌅 Morning</p>
+                    <Input
+                      id="fixedFatMorning"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="e.g. 6.5"
+                      value={fixedFatMorning}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9.]/g, "");
+                        setFixedFatMorning(
+                          !raw.includes(".") && raw.length >= 2
+                            ? raw.slice(0, -1) + "." + raw.slice(-1)
+                            : raw
+                        );
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-indigo-700 dark:text-indigo-400">🌙 Evening</p>
+                    <Input
+                      id="fixedFatEvening"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="e.g. 6.2"
+                      value={fixedFatEvening}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9.]/g, "");
+                        setFixedFatEvening(
+                          !raw.includes(".") && raw.length >= 2
+                            ? raw.slice(0, -1) + "." + raw.slice(-1)
+                            : raw
+                        );
+                      }}
+                    />
+                  </div>
+                </div>
+                {(fixedFatMorning !== "" || fixedFatEvening !== "") && (
                   <p className="text-xs text-slate-500">
-                    When adding a Buffalo milk log for this account the fat field will auto-fill with <strong>{fixedFat}</strong>.
+                    Buffalo fat will auto-fill based on the selected time period when adding logs.
                   </p>
                 )}
               </div>
@@ -298,9 +325,9 @@ export default function AccountsPage() {
                         Custom rates
                       </span>
                     )}
-                    {account.fixedFat != null && (
+                    {(account.fixedFatMorning != null || account.fixedFatEvening != null) && (
                       <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300">
-                        Fat {account.fixedFat}
+                        Fat {account.fixedFatMorning ?? "—"}/{account.fixedFatEvening ?? "—"}
                       </span>
                     )}
                   </TableCell>
