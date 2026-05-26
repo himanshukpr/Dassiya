@@ -234,8 +234,9 @@ If Firestore rejects the write, `onSnapshot` automatically reconciles UI back to
 | Dashboard | `/dashboard` | Live stats: account counts, logs today, balance summary |
 | Accounts | `/dashboard/accounts` | CRUD for all accounts; balance shown live |
 | Milk Logs | `/dashboard/logs` | Daily milk entries with live auto-calculated amount; add-log popup uses a searchable account picker, sticky time period, and a right-side recent-logs confirmation panel; the table also supports date and period filters |
-| Receipts | `/dashboard/receipts` | Payment records; balance auto-updated on save/delete |
+| Receipts | `/dashboard/payments` | Payment records; balance auto-updated on save/delete |
 | Bills | `/dashboard/bills` | Generate Dassiya for ALL accounts at once |
+| Ledger | `/dashboard/ledger` | Per-account billing ledger showing Prev Bal, Current amount, Total Balance, Receipts, Receipt Date, and Closing Balance per 10-day period |
 | Rate Settings | `/dashboard/rates` | Configure all 12 milk rate combinations (Cow, Buffalo, Sapreta × Morning/Evening × Purchase/Sale) |
 
 ---
@@ -275,8 +276,9 @@ Dassiya/
 │       ├── page.tsx                    ← Dashboard home (stats)
 │       ├── accounts/page.tsx           ← Accounts CRUD
 │       ├── logs/page.tsx               ← Milk logs with auto-amount
-│       ├── receipts/page.tsx           ← Payment receipts
+│       ├── payments/page.tsx           ← Payment receipts
 │       ├── bills/page.tsx              ← Dassiya bill generation
+│       ├── ledger/page.tsx             ← Per-account billing ledger
 │       └── rates/page.tsx              ← Rate settings
 ├── components/
 │   ├── providers/
@@ -321,3 +323,5 @@ npm run build
 - Bills page now supports browser-based PDF export through a single popup-driven control, and the exported PDF now shows account-wise statements with DATE, MORNING, and EVENING columns for the selected period.
 - Accounts now support **Fixed Fat** fields for Buffalo milk — one for **Morning** and one for **Evening**. When set, the fat field in the Add/Edit Milk Log popup auto-fills with the value matching the selected time period. Changing the period or selecting a different account re-triggers the auto-fill. The user can still override the value per entry. The Accounts table shows a purple **"Fat M/E"** badge (e.g. "Fat 6.5/6.2") for accounts that have any fixed fat configured.
 - **Milk Logs sessionStorage cache expiration** — The cached `date` and `timePeriod` values on the Milk Logs page now auto-expire after 24 hours (2 time periods). The cache stores `{value, timestamp}` as JSON in `sessionStorage`; on retrieval, if 24+ hours have elapsed since the timestamp, the entry is cleared and the fallback (today/Morning) is used.
+- **PDF Previous Balance & Closing Balance** — Each account statement in the bulk PDF export now shows two extra rows at the bottom: **Previous Balance** (the balance carried into that period, from `previousBalanceAtGeneration`) and **Closing Balance** (= Previous + Current, from `newBalance`). These rows only appear when a bill exists for the selected period. The Grand Total row is now labelled "GRAND TOTAL (Current)" to clearly distinguish it.
+- **Ledger page** — New page at `/dashboard/ledger`. Select any account and an optional year filter to view the full billing history as a ledger table. Columns: **Period**, **Prev. Bal**, **Current**, **T. Bal**, **Receipt**, **Dated**, **C. Bal**. Multiple receipts in one period each get their own row with period columns row-spanned. A totals footer shows grand current total, total received, and the final closing balance. Includes a PDF export button (landscape A4) matching the ledger format in the physical register.

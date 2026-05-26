@@ -36,6 +36,19 @@ export default function BillsPage() {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [period, setPeriod] = useState("1-10");
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    bills.forEach((bill) => {
+      const y = parseInt(bill.startDate.substring(0, 4), 10);
+      if (!isNaN(y)) years.add(y);
+    });
+    logs.forEach((log) => {
+      const y = parseInt(log.date.substring(0, 4), 10);
+      if (!isNaN(y)) years.add(y);
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [bills, logs]);
   const [exportScope, setExportScope] = useState<"all" | "purchase" | "sale">("all");
   const [mobileTab, setMobileTab] = useState<"purchase" | "sale">("purchase");
 
@@ -285,6 +298,11 @@ export default function BillsPage() {
     const account = accounts.find((item) => item.id === accountId);
     if (!account) return null;
 
+    // Find the bill for this account in the selected period to get previousBalanceAtGeneration
+    const matchingBill = bills.find(
+      (b) => b.accountId === accountId && b.startDate === startStr && b.endDate === endStr
+    );
+
     type StatementRow = {
       MorningCowQty: number;
       MorningCowAmt: number;
@@ -525,9 +543,19 @@ export default function BillsPage() {
               </td>
             </tr>
             <tr>
-              <td colspan="10" class="text-right"><strong>GRAND TOTAL:</strong></td>
+              <td colspan="10" class="text-right"><strong>GRAND TOTAL (Current):</strong></td>
               <td class="text-right"><strong>₹${grandTotal.toFixed(0)}</strong></td>
             </tr>
+            ${matchingBill ? `
+            <tr style="background: #f9fafb;">
+              <td colspan="10" class="text-right" style="color: #6b7280;">Previous Balance:</td>
+              <td class="text-right" style="color: #6b7280;">₹${matchingBill.previousBalanceAtGeneration.toFixed(0)}</td>
+            </tr>
+            <tr style="background: #eff6ff;">
+              <td colspan="10" class="text-right"><strong style="color: #1d4ed8;">CLOSING BALANCE:</strong></td>
+              <td class="text-right"><strong style="color: #1d4ed8;">₹${matchingBill.newBalance.toFixed(0)}</strong></td>
+            </tr>
+            ` : ''}
           </tbody>
         </table>
       </div>
@@ -768,7 +796,7 @@ export default function BillsPage() {
                   <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {[2024, 2025, 2026, 2027].map((y) => (
+                      {availableYears.map((y) => (
                         <SelectItem key={y} value={String(y)}>{y}</SelectItem>
                       ))}
                     </SelectContent>
@@ -887,7 +915,7 @@ export default function BillsPage() {
                 <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {[2024, 2025, 2026, 2027].map((y) => (
+                    {availableYears.map((y) => (
                       <SelectItem key={y} value={String(y)}>{y}</SelectItem>
                     ))}
                   </SelectContent>

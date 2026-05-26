@@ -19,7 +19,8 @@ import {
   X,
   GearSix,
   Sun,
-  Moon
+  Moon,
+  BookOpen
 } from "@phosphor-icons/react";
 
 const navigation = [
@@ -28,6 +29,7 @@ const navigation = [
   { name: "Milk Logs", href: "/dashboard/logs", icon: ListBullets },
   { name: "Payments", href: "/dashboard/payments", icon: Receipt },
   { name: "Bills (Dassiya)", href: "/dashboard/bills", icon: Calculator },
+  { name: "Ledger", href: "/dashboard/ledger", icon: BookOpen },
   { name: "Rate Settings", href: "/dashboard/rates", icon: GearSix },
 ];
 
