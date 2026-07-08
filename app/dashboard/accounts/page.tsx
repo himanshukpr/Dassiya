@@ -67,14 +67,21 @@ export default function AccountsPage() {
   const [fixedFatMorning, setFixedFatMorning] = useState(""); // empty = no fixed fat for morning
   const [fixedFatEvening, setFixedFatEvening] = useState(""); // empty = no fixed fat for evening
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"All" | "Purchase From" | "Sale To">("Purchase From");
 
   const filteredAccounts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return accounts;
-    return accounts.filter((a) =>
-      [a.name, a.type, a.mobile].join(" ").toLowerCase().includes(query)
-    );
-  }, [accounts, searchQuery]);
+    let result = accounts;
+    if (query) {
+      result = result.filter((a) =>
+        [a.name, a.type, a.mobile].join(" ").toLowerCase().includes(query)
+      );
+    }
+    if (activeTab !== "All") {
+      result = result.filter((a) => a.type === activeTab);
+    }
+    return result;
+  }, [accounts, searchQuery, activeTab]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -284,42 +291,66 @@ export default function AccountsPage() {
             />
           </div>
         </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[50px]">#</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Mobile</TableHead>
-              <TableHead className="text-right">Balance (₹)</TableHead>
-              <TableHead className="w-[100px] text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loadingAccounts ? (
+
+        <div className="flex border-b">
+          <button
+            type="button"
+            onClick={() => setActiveTab("All")}
+            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === "All"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("Purchase From")}
+            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === "Purchase From"
+                ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Purchase From
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("Sale To")}
+            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === "Sale To"
+                ? "border-green-500 text-green-600 dark:text-green-400"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Sale To
+          </button>
+        </div>
+
+        {loadingAccounts ? (
+          <div className="p-8 text-center text-slate-400">Loading accounts...</div>
+        ) : filteredAccounts.length === 0 ? (
+          <div className="p-8 text-center text-slate-500">
+            {searchQuery ? "No matching accounts found." : "No accounts yet. Add one to get started."}
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="text-center h-24 text-slate-400">
-                  Loading accounts...
-                </TableCell>
+                <TableHead className="w-[50px]">#</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Mobile</TableHead>
+                <TableHead className="text-right">Balance (₹)</TableHead>
+                <TableHead className="w-[100px] text-right">Actions</TableHead>
               </TableRow>
-            ) : filteredAccounts.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center h-24 text-slate-500">
-                  {searchQuery ? "No matching accounts found." : "No accounts yet. Add one to get started."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredAccounts.map((account, idx) => (
+            </TableHeader>
+            <TableBody>
+              {filteredAccounts.map((account, idx) => (
                 <TableRow key={account.id}>
                   <TableCell className="text-slate-400 text-sm">{idx + 1}</TableCell>
-                  <TableCell className="font-medium">{account.name}</TableCell>
-                  <TableCell>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${account.type === "Purchase From"
-                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
-                      : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-                      }`}>
-                      {account.type}
-                    </span>
+                  <TableCell className="font-medium">
+                    {account.name}
                     {account.rateOverrides && (
                       <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300">
                         Custom rates
@@ -346,10 +377,10 @@ export default function AccountsPage() {
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </div>
     </div>
   );

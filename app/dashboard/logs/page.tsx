@@ -27,6 +27,7 @@ type TimePeriod = MilkLog["timePeriod"];
 
 type LogDraft = {
   rowId: string;
+  accountId: string;
   milkType: MilkType;
   qty: string;
   fat: string;
@@ -89,6 +90,7 @@ export default function LogsPage() {
   const [timePeriod, setTimePeriod] = useState<TimePeriod>(() => getCached("logs_timePeriod", "Morning") as TimePeriod);
   const createLogRow = (overrides: Partial<LogDraft> = {}): LogDraft => ({
     rowId: createRowId(),
+    accountId: "",
     milkType: "Buffalo",
     qty: "",
     fat: "",
@@ -96,9 +98,13 @@ export default function LogsPage() {
     ...overrides,
   });
   const [logRows, setLogRows] = useState<LogDraft[]>(() => [createLogRow()]);
+
+  // Account type filter for add mode
+  const [addAccountType, setAddAccountType] = useState<"Purchase From" | "Sale To">("Purchase From");
   // Table filters
   const [filterDate, setFilterDate] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"All" | "Morning" | "Evening">("All");
+  const [filterAccountType, setFilterAccountType] = useState<"All" | "Purchase From" | "Sale To">("All");
   const [logSearch, setLogSearch] = useState("");
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
@@ -107,13 +113,22 @@ export default function LogsPage() {
     [rates, selectedAccount]
   );
 
-  const getFixedFatForPeriod = (period: TimePeriod) => {
-    if (!selectedAccount) return null;
-    const value = (period === "Morning" ? selectedAccount.fixedFatMorning : selectedAccount.fixedFatEvening) as unknown;
+  // Accounts filtered by add type for the add mode
+  const addModeAccounts = useMemo(
+    () => accounts.filter((a) => a.type === addAccountType),
+    [accounts, addAccountType]
+  );
+
+  const getFixedFatForPeriod = (period: TimePeriod, account?: { fixedFatMorning?: number | null; fixedFatEvening?: number | null } | null) => {
+    const acct = account ?? selectedAccount;
+    if (!acct) return null;
+    const value = (period === "Morning" ? acct.fixedFatMorning : acct.fixedFatEvening) as unknown;
     if (value === null || value === undefined || value === "") return null;
     const parsed = typeof value === "number" ? value : Number(value);
     return Number.isFinite(parsed) ? parsed : null;
   };
+
+  const getRowAccount = (row: LogDraft) => accounts.find((a) => a.id === row.accountId);
 
   const updateLogRow = (rowId: string, patch: Partial<LogDraft>, autoFillFixedFat = false) => {
     setLogRows((prev) =>
@@ -121,7 +136,8 @@ export default function LogsPage() {
         if (row.rowId !== rowId) return row;
         const next = { ...row, ...patch };
         if (autoFillFixedFat && next.milkType === "Buffalo") {
-          const fixedFat = getFixedFatForPeriod(next.timePeriod);
+          const acct = accounts.find((a) => a.id === next.accountId);
+          const fixedFat = getFixedFatForPeriod(next.timePeriod, acct);
           if (fixedFat != null) next.fat = String(fixedFat);
         }
         return next;
@@ -130,15 +146,15 @@ export default function LogsPage() {
   };
 
   useEffect(() => {
-    if (!selectedAccount) return;
     setLogRows((prev) =>
       prev.map((row) => {
-        if (row.milkType !== "Buffalo" || row.fat !== "") return row;
-        const fixedFat = getFixedFatForPeriod(row.timePeriod);
+        if (row.milkType !== "Buffalo" || row.fat !== "" || !row.accountId) return row;
+        const acct = accounts.find((a) => a.id === row.accountId);
+        const fixedFat = getFixedFatForPeriod(row.timePeriod, acct);
         return fixedFat != null ? { ...row, fat: String(fixedFat) } : row;
       })
     );
-  }, [selectedAccount?.id, selectedAccount?.fixedFatMorning, selectedAccount?.fixedFatEvening]);
+  }, [accounts, logRows.map((r) => r.accountId).join(",")]);
 
   const filteredAccounts = useMemo(() => {
     const query = accountSearch.trim().toLowerCase();
@@ -161,26 +177,31 @@ export default function LogsPage() {
     return bTime - aTime;
   };
 
-  const recentLogs = useMemo(() => [...logs].sort(sortByCreatedAt).slice(0, 5), [logs]);
+  const recentLogs = useMemo(() => {
+    const typeFilter = editingLog ? filterAccountType : addAccountType;
+    const filtered = typeFilter === "All" ? logs : logs.filter((l) => l.accountType === typeFilter);
+    return [...filtered].sort(sortByCreatedAt).slice(0, 5);
+  }, [logs, filterAccountType, addAccountType, editingLog]);
 
   const getRowAmount = (row: LogDraft) => {
-    if (!selectedAccount || !row.qty || parseFloat(row.qty) <= 0) return null;
+    const rowAccount = getRowAccount(row);
+    if (!rowAccount || !row.qty || parseFloat(row.qty) <= 0) return null;
     if (row.milkType === "Buffalo" && (!row.fat || parseFloat(row.fat) <= 0)) return null;
+    const rowRates = resolveAccountRates(rates, rowAccount.rateOverrides);
     return calculateAmount(
       row.milkType,
       row.timePeriod,
-      selectedAccount.type,
+      rowAccount.type,
       parseFloat(row.qty) || 0,
       parseFloat(row.fat) || 0,
-      effectiveRates
+      rowRates
     );
   };
 
   const addLogRow = () => {
     const basePeriod = logRows[logRows.length - 1]?.timePeriod ?? timePeriod;
     const row = createLogRow({ timePeriod: basePeriod });
-    const fixedFat = row.milkType === "Buffalo" ? getFixedFatForPeriod(basePeriod) : null;
-    setLogRows((prev) => [...prev, fixedFat != null ? { ...row, fat: String(fixedFat) } : row]);
+    setLogRows((prev) => [...prev, row]);
   };
 
   const removeLogRow = (rowId: string) => {
@@ -188,29 +209,33 @@ export default function LogsPage() {
   };
 
   const buildLogData = (row: LogDraft) => {
-    if (!selectedAccount) return null;
+    const rowAccount = getRowAccount(row);
+    if (!rowAccount) return null;
     const qty = parseFloat(row.qty);
     const fat = row.milkType === "Buffalo" ? parseFloat(row.fat) : 0;
+    const rowRates = resolveAccountRates(rates, rowAccount.rateOverrides);
     return {
-      accountId,
-      accountName: selectedAccount.name,
-      accountType: selectedAccount.type,
+      accountId: row.accountId,
+      accountName: rowAccount.name,
+      accountType: rowAccount.type,
       date,
       milkType: row.milkType,
       qty,
       fat,
       timePeriod: row.timePeriod,
-      amount: calculateAmount(row.milkType, row.timePeriod, selectedAccount.type, qty, fat, effectiveRates),
+      amount: calculateAmount(row.milkType, row.timePeriod, rowAccount.type, qty, fat, rowRates),
     };
   };
 
   const validateLogRows = () => {
-    if (!selectedAccount) return "Select an account first.";
     if (!date) return "Select a date.";
     if (logRows.length === 0) return "Add at least one log row.";
 
     for (let index = 0; index < logRows.length; index += 1) {
       const row = logRows[index];
+      if (!row.accountId) {
+        return `Row ${index + 1}: select an account.`;
+      }
       const qty = parseFloat(row.qty);
       if (!row.qty || Number.isNaN(qty) || qty <= 0) {
         return `Row ${index + 1}: enter a valid quantity.`;
@@ -232,11 +257,12 @@ export default function LogsPage() {
       .filter((log) => {
         const matchesDate = !filterDate || log.date === filterDate;
         const matchesPeriod = filterPeriod === "All" || log.timePeriod === filterPeriod;
+        const matchesAccountType = filterAccountType === "All" || log.accountType === filterAccountType;
         const matchesSearch = !query || log.accountName.toLowerCase().includes(query);
-        return matchesDate && matchesPeriod && matchesSearch;
+        return matchesDate && matchesPeriod && matchesAccountType && matchesSearch;
       })
       .sort(sortByCreatedAt);
-  }, [logs, filterDate, filterPeriod, logSearch]);
+  }, [logs, filterDate, filterPeriod, filterAccountType, logSearch]);
 
   // Live amount preview — recalculates whenever any field changes
   const previewAmount = useMemo(() => {
@@ -277,18 +303,17 @@ export default function LogsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAccount) return;
     setSaving(true);
 
     try {
       if (editingLog) {
-        const row: LogDraft = { rowId: "editing", milkType, qty, fat, timePeriod };
+        const row: LogDraft = { rowId: "editing", accountId: editingLog.accountId, milkType, qty, fat, timePeriod };
         const data = buildLogData(row);
         if (!data) return;
 
         await updateLog(editingLog.id, data);
         setToast({
-          message: `Milk log updated for ${selectedAccount.name}.`,
+          message: `Milk log updated for ${editingLog.accountName}.`,
           variant: "success",
         });
       } else {
@@ -304,7 +329,7 @@ export default function LogsPage() {
         const dataRows = logRows.map(buildLogData).filter((row): row is NonNullable<typeof row> => Boolean(row));
         await Promise.all(dataRows.map(addLog));
         setToast({
-          message: `${dataRows.length} milk log${dataRows.length === 1 ? "" : "s"} added for ${selectedAccount.name}.`,
+          message: `${dataRows.length} milk log${dataRows.length === 1 ? "" : "s"} added successfully.`,
           variant: "success",
         });
       }
@@ -342,11 +367,13 @@ export default function LogsPage() {
     setMilkType("Buffalo");
     setQty("");
     setFat("");
+    setAddAccountType("Purchase From");
   };
 
   const clearFilters = () => {
     setFilterDate("");
     setFilterPeriod("All");
+    setFilterAccountType("All");
     setLogSearch("");
   };
 
@@ -580,20 +607,48 @@ export default function LogsPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      {accountPicker}
-                      <div className="space-y-2">
-                        <Label htmlFor="date">Date</Label>
-                        <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="date">Date</Label>
+                      <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+                    </div>
+
+                    <div className="flex border-b">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddAccountType("Purchase From");
+                          setLogRows((prev) => prev.map((row) => ({ ...row, accountId: "" })));
+                        }}
+                        className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                          addAccountType === "Purchase From"
+                            ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Purchase From
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddAccountType("Sale To");
+                          setLogRows((prev) => prev.map((row) => ({ ...row, accountId: "" })));
+                        }}
+                        className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                          addAccountType === "Sale To"
+                            ? "border-green-500 text-green-600 dark:text-green-400"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Sale To
+                      </button>
                     </div>
 
                     <div className="flex flex-col gap-3 rounded-xl border border-border bg-background/60 p-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h3 className="text-sm font-semibold">Milk Log Rows</h3>
-                        <p className="text-xs text-muted-foreground">Add multiple periods and items for the same account.</p>
+                        <p className="text-xs text-muted-foreground">Add multiple entries with different accounts and periods.</p>
                       </div>
-                      <Button type="button" variant="outline" size="sm" onClick={addLogRow} disabled={!accountId}>
+                      <Button type="button" variant="outline" size="sm" onClick={addLogRow}>
                         <Plus className="mr-1 h-4 w-4" />
                         Add Row
                       </Button>
@@ -602,7 +657,8 @@ export default function LogsPage() {
                     <div className="grid gap-3 md:hidden">
                       {logRows.map((row, index) => {
                         const rowAmount = getRowAmount(row);
-                        const fixedFat = getFixedFatForPeriod(row.timePeriod);
+                        const rowAccount = getRowAccount(row);
+                        const fixedFat = getFixedFatForPeriod(row.timePeriod, rowAccount);
                         return (
                           <div key={row.rowId} className="rounded-xl border border-border bg-background/60 p-3 shadow-sm">
                             <div className="mb-3 flex items-center justify-between gap-3">
@@ -622,66 +678,94 @@ export default function LogsPage() {
                               </Button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-3">
                               <div className="space-y-2">
-                                <Label>Period</Label>
+                                <Label>Account</Label>
                                 <Select
-                                  value={row.timePeriod}
-                                  onValueChange={(val: TimePeriod) => updateLogRow(row.rowId, { timePeriod: val }, true)}
+                                  value={row.accountId}
+                                  onValueChange={(val) => {
+                                    const acct = addModeAccounts.find((a) => a.id === val);
+                                    updateLogRow(row.rowId, { accountId: val }, true);
+                                  }}
                                 >
-                                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                                  <SelectTrigger className="w-full"><SelectValue placeholder="Select account" /></SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="Morning">Morning</SelectItem>
-                                    <SelectItem value="Evening">Evening</SelectItem>
+                                    {addModeAccounts.length === 0 ? (
+                                      <div className="p-2 text-sm text-muted-foreground">No accounts found.</div>
+                                    ) : (
+                                      addModeAccounts.map((a) => (
+                                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                                      ))
+                                    )}
                                   </SelectContent>
                                 </Select>
                               </div>
-                              <div className="space-y-2">
-                                <Label>Item</Label>
-                                <Select
-                                  value={row.milkType}
-                                  onValueChange={(val: MilkType) => updateLogRow(row.rowId, {
-                                    milkType: val,
-                                    fat: val === "Buffalo" ? (fixedFat != null ? String(fixedFat) : "") : "",
-                                  })}
-                                >
-                                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Buffalo">Buffalo</SelectItem>
-                                    <SelectItem value="Cow">Cow</SelectItem>
-                                    <SelectItem value="Sapreta">Sapreta</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Qty</Label>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  value={row.qty}
-                                  onChange={(e) => updateLogRow(row.rowId, { qty: e.target.value })}
-                                  placeholder="0.00"
-                                />
-                              </div>
-                              {row.milkType === "Buffalo" ? (
+
+                              <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-2">
-                                  <Label>Fat %</Label>
+                                  <Label>Period</Label>
+                                  <Select
+                                    value={row.timePeriod}
+                                    onValueChange={(val: TimePeriod) => updateLogRow(row.rowId, { timePeriod: val }, true)}
+                                  >
+                                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Morning">Morning</SelectItem>
+                                      <SelectItem value="Evening">Evening</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Item</Label>
+                                  <Select
+                                    value={row.milkType}
+                                    onValueChange={(val: MilkType) => {
+                                      const acct = getRowAccount(row);
+                                      const fixedFatVal = getFixedFatForPeriod(row.timePeriod, acct);
+                                      updateLogRow(row.rowId, {
+                                        milkType: val,
+                                        fat: val === "Buffalo" ? (fixedFatVal != null ? String(fixedFatVal) : "") : "",
+                                      });
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Buffalo">Buffalo</SelectItem>
+                                      <SelectItem value="Cow">Cow</SelectItem>
+                                      <SelectItem value="Sapreta">Sapreta</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Qty</Label>
                                   <Input
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={row.fat}
-                                    onChange={(e) => updateLogRow(row.rowId, { fat: normalizeDecimalInput(e.target.value) })}
-                                    placeholder={fixedFat != null ? String(fixedFat) : "0.0"}
+                                    type="number"
+                                    step="0.01"
+                                    value={row.qty}
+                                    onChange={(e) => updateLogRow(row.rowId, { qty: e.target.value })}
+                                    placeholder="0.00"
                                   />
                                 </div>
-                              ) : (
-                                <div className="space-y-2">
-                                  <Label>Fat %</Label>
-                                  <div className="rounded-lg border border-border bg-muted/30 p-2 text-sm text-muted-foreground">
-                                    Not needed
+                                {row.milkType === "Buffalo" ? (
+                                  <div className="space-y-2">
+                                    <Label>Fat %</Label>
+                                    <Input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={row.fat}
+                                      onChange={(e) => updateLogRow(row.rowId, { fat: normalizeDecimalInput(e.target.value) })}
+                                      placeholder={fixedFat != null ? String(fixedFat) : "0.0"}
+                                    />
                                   </div>
-                                </div>
-                              )}
+                                ) : (
+                                  <div className="space-y-2">
+                                    <Label>Fat %</Label>
+                                    <div className="rounded-lg border border-border bg-muted/30 p-2 text-sm text-muted-foreground">
+                                      Not needed
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             </div>
 
                             <div className="mt-3 flex items-center justify-between rounded-lg border border-border bg-muted/30 p-3">
@@ -707,10 +791,11 @@ export default function LogsPage() {
                         <TableHeader>
                           <TableRow>
                             <TableHead className="w-[40px]">#</TableHead>
+                            <TableHead>Account</TableHead>
                             <TableHead>Period</TableHead>
                             <TableHead>Item</TableHead>
-                            <TableHead className="w-[120px]">Qty</TableHead>
-                            <TableHead className="w-[120px]">Fat %</TableHead>
+                            <TableHead className="w-[100px]">Qty</TableHead>
+                            <TableHead className="w-[100px]">Fat %</TableHead>
                             <TableHead className="text-right">Amount</TableHead>
                             <TableHead className="w-[56px] text-right"> </TableHead>
                           </TableRow>
@@ -718,10 +803,28 @@ export default function LogsPage() {
                         <TableBody>
                           {logRows.map((row, index) => {
                             const rowAmount = getRowAmount(row);
-                            const fixedFat = getFixedFatForPeriod(row.timePeriod);
+                            const rowAccount = getRowAccount(row);
+                            const fixedFat = getFixedFatForPeriod(row.timePeriod, rowAccount);
                             return (
                               <TableRow key={row.rowId}>
                                 <TableCell className="text-slate-400 text-sm">{index + 1}</TableCell>
+                                <TableCell>
+                                  <Select
+                                    value={row.accountId}
+                                    onValueChange={(val) => updateLogRow(row.rowId, { accountId: val }, true)}
+                                  >
+                                    <SelectTrigger className="w-full min-w-[140px]"><SelectValue placeholder="Select" /></SelectTrigger>
+                                    <SelectContent>
+                                      {addModeAccounts.length === 0 ? (
+                                        <div className="p-2 text-sm text-muted-foreground">No accounts found.</div>
+                                      ) : (
+                                        addModeAccounts.map((a) => (
+                                          <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                                        ))
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
                                 <TableCell>
                                   <Select
                                     value={row.timePeriod}
@@ -737,10 +840,14 @@ export default function LogsPage() {
                                 <TableCell>
                                   <Select
                                     value={row.milkType}
-                                    onValueChange={(val: MilkType) => updateLogRow(row.rowId, {
-                                      milkType: val,
-                                      fat: val === "Buffalo" ? (fixedFat != null ? String(fixedFat) : "") : "",
-                                    })}
+                                    onValueChange={(val: MilkType) => {
+                                      const acct = getRowAccount(row);
+                                      const fixedFatVal = getFixedFatForPeriod(row.timePeriod, acct);
+                                      updateLogRow(row.rowId, {
+                                        milkType: val,
+                                        fat: val === "Buffalo" ? (fixedFatVal != null ? String(fixedFatVal) : "") : "",
+                                      });
+                                    }}
                                   >
                                     <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                                     <SelectContent>
@@ -793,7 +900,7 @@ export default function LogsPage() {
                         </TableBody>
                         <TableFooter>
                           <TableRow>
-                            <TableCell colSpan={5} className="text-right font-semibold">Total Amount</TableCell>
+                            <TableCell colSpan={6} className="text-right font-semibold">Total Amount</TableCell>
                             <TableCell className="text-right font-bold text-green-700 dark:text-green-400">
                               ₹{(logRows.reduce((sum, row) => sum + (getRowAmount(row) ?? 0), 0)).toFixed(2)}
                             </TableCell>
@@ -803,16 +910,16 @@ export default function LogsPage() {
                       </Table>
                     </div>
 
-                    {selectedAccount && logRows.some((row) => row.qty && getRowAmount(row) === null) ? (
+                    {logRows.some((row) => row.qty && getRowAmount(row) === null) ? (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
-                        Complete quantity and fat for every row to calculate amounts.
+                        Complete account, quantity, and fat for every row to calculate amounts.
                       </div>
                     ) : null}
                   </div>
                 )}
 
                 <DialogFooter className="px-0 pb-0">
-                  <Button type="submit" className="w-full sm:w-auto" disabled={!accountId || saving}>
+                  <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
                     {saving ? "Saving..." : editingLog ? "Update Log" : "Save Logs"}
                   </Button>
                 </DialogFooter>
@@ -864,6 +971,42 @@ export default function LogsPage() {
       </div>
 
       <div className="rounded-md border bg-white dark:bg-slate-900">
+        <div className="flex border-b">
+          <button
+            type="button"
+            onClick={() => setFilterAccountType("All")}
+            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+              filterAccountType === "All"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterAccountType("Purchase From")}
+            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+              filterAccountType === "Purchase From"
+                ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Purchase From
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterAccountType("Sale To")}
+            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+              filterAccountType === "Sale To"
+                ? "border-green-500 text-green-600 dark:text-green-400"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Sale To
+          </button>
+        </div>
+
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Filters</h2>
