@@ -451,8 +451,12 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
   const deleteReceipt = useCallback(async (receipt: Receipt) => {
     if (!user) return;
     const account = accounts.find((a) => a.id === receipt.accountId);
+    const isSaleTo = account?.type === "Sale To";
+    // Reverse the original balance operation:
+    // Purchase From: receipt decreased balance, so delete adds back
+    // Sale To: receipt increased balance, so delete subtracts
     const revertedBalance = account
-      ? receipt.balanceAction === "Add"
+      ? isSaleTo
         ? account.previousBalance - receipt.amount
         : account.previousBalance + receipt.amount
       : null;
@@ -540,8 +544,11 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
   const deleteBill = useCallback(async (bill: Bill) => {
     if (!user) return;
     const account = accounts.find((a) => a.id === bill.accountId);
+    const isSaleTo = account?.type === "Sale To";
     const revertedBalance = account
-      ? account.previousBalance - bill.totalMilkAmount
+      ? isSaleTo
+        ? account.previousBalance + bill.totalMilkAmount
+        : account.previousBalance - bill.totalMilkAmount
       : null;
 
     setBills((prev) => prev.filter((b) => b.id !== bill.id));

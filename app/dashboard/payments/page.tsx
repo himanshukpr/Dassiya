@@ -120,12 +120,19 @@ export default function ReceiptsPage() {
       : "Payment Received"  // We receive payment from our customer
     : null;
 
-  // Receipt always SUBTRACTS from the balance (clears dues)
+  // Balance direction depends on account type:
+  // Purchase From: positive = we owe them, so payment DECREASES balance
+  // Sale To: negative = they owe us, so payment INCREASES balance (toward 0)
+  const isSaleTo = selectedAccount?.type === "Sale To";
   const newBalance =
     selectedAccount && amount
       ? editingReceipt
-        ? selectedAccount.previousBalance + editingReceipt.amount - (parseFloat(amount) || 0)
-        : selectedAccount.previousBalance - (parseFloat(amount) || 0)
+        ? isSaleTo
+          ? selectedAccount.previousBalance - editingReceipt.amount + (parseFloat(amount) || 0)
+          : selectedAccount.previousBalance + editingReceipt.amount - (parseFloat(amount) || 0)
+        : isSaleTo
+          ? selectedAccount.previousBalance + (parseFloat(amount) || 0)
+          : selectedAccount.previousBalance - (parseFloat(amount) || 0)
       : null;
 
   const handleEdit = (receipt: Receipt) => {
