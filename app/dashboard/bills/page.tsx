@@ -107,15 +107,10 @@ export default function BillsPage() {
       const existingBill = bills.find(
         (b) => b.accountId === account.id && b.startDate === startStr && b.endDate === endStr
       );
-      const isSaleTo = account.type === "Sale To";
       const baseBalance = existingBill
-        ? isSaleTo
-          ? account.previousBalance + (existingBill.totalMilkAmount ?? 0)
-          : account.previousBalance - (existingBill.totalMilkAmount ?? 0)
+        ? account.previousBalance - (existingBill.totalMilkAmount ?? 0)
         : account.previousBalance;
-      const newBalance = isSaleTo
-        ? baseBalance - totalAmount
-        : baseBalance + totalAmount;
+      const newBalance = baseBalance + totalAmount;
 
       return {
         account,
@@ -733,10 +728,7 @@ export default function BillsPage() {
         const previousBalanceAtGeneration = existingBill
           ? baseBalance
           : account.previousBalance;
-        const isSaleTo = account.type === "Sale To";
-        const newBalance = isSaleTo
-          ? previousBalanceAtGeneration - totalAmount
-          : previousBalanceAtGeneration + totalAmount;
+        const newBalance = previousBalanceAtGeneration + totalAmount;
 
         return {
           billData: {
