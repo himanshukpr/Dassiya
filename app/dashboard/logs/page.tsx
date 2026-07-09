@@ -97,10 +97,40 @@ export default function LogsPage() {
     timePeriod,
     ...overrides,
   });
-  const [logRows, setLogRows] = useState<LogDraft[]>(() => [createLogRow()]);
+
+  const getCachedLogRows = (): LogDraft[] | null => {
+    if (typeof window === "undefined") return null;
+    const raw = sessionStorage.getItem("logs_draftRows");
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.value && parsed.timestamp) {
+        const hoursElapsed = (Date.now() - parsed.timestamp) / (1000 * 60 * 60);
+        if (hoursElapsed >= 24) {
+          sessionStorage.removeItem("logs_draftRows");
+          return null;
+        }
+        return parsed.value;
+      }
+    } catch {
+      sessionStorage.removeItem("logs_draftRows");
+    }
+    return null;
+  };
+
+  const [logRows, setLogRows] = useState<LogDraft[]>(() => getCachedLogRows() ?? [createLogRow()]);
 
   // Account type filter for add mode
-  const [addAccountType, setAddAccountType] = useState<"Purchase From" | "Sale To">("Purchase From");
+  const [addAccountType, setAddAccountType] = useState<"Purchase From" | "Sale To">(() => {
+    if (typeof window === "undefined") return "Purchase From";
+    const raw = sessionStorage.getItem("logs_addAccountType");
+    if (!raw) return "Purchase From";
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.value === "Purchase From" || parsed.value === "Sale To") return parsed.value;
+    } catch { /* ignore */ }
+    return "Purchase From";
+  });
   // Table filters
   const [filterDate, setFilterDate] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"All" | "Morning" | "Evening">("All");
@@ -118,6 +148,19 @@ export default function LogsPage() {
     () => accounts.filter((a) => a.type === addAccountType),
     [accounts, addAccountType]
   );
+
+  // Persist draft rows and addAccountType to sessionStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("logs_draftRows", JSON.stringify({ value: logRows, timestamp: Date.now() }));
+    }
+  }, [logRows]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCached("logs_addAccountType", addAccountType);
+    }
+  }, [addAccountType]);
 
   const getFixedFatForPeriod = (period: TimePeriod, account?: { fixedFatMorning?: number | null; fixedFatEvening?: number | null } | null) => {
     const acct = account ?? selectedAccount;
@@ -332,6 +375,10 @@ export default function LogsPage() {
           message: `${dataRows.length} milk log${dataRows.length === 1 ? "" : "s"} added successfully.`,
           variant: "success",
         });
+        // Clear draft cache after successful submission
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem("logs_draftRows");
+        }
       }
 
       setEditingLog(null);
