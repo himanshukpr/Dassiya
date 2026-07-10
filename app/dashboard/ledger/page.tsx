@@ -30,6 +30,37 @@ interface LedgerRow {
   closingBalance: number;
 }
 
+function getNextPeriodRange(startDate: string, endDate: string): { start: string; end: string } {
+  const start = new Date(startDate + "T00:00:00");
+  const end = new Date(endDate + "T00:00:00");
+  const day = start.getDate();
+  const year = start.getFullYear();
+  const month = start.getMonth();
+
+  if (day === 1) {
+    // 1-10 → next is 11-20 of same month
+    return {
+      start: `${year}-${String(month + 1).padStart(2, "0")}-11`,
+      end: `${year}-${String(month + 1).padStart(2, "0")}-20`,
+    };
+  } else if (day === 11) {
+    // 11-20 → next is 21-end of same month
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    return {
+      start: `${year}-${String(month + 1).padStart(2, "0")}-21`,
+      end: `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`,
+    };
+  } else {
+    // 21-end → next is 1-10 of next month
+    const nextMonth = month + 1 > 11 ? 0 : month + 1;
+    const nextYear = month + 1 > 11 ? year + 1 : year;
+    return {
+      start: `${nextYear}-${String(nextMonth + 1).padStart(2, "0")}-01`,
+      end: `${nextYear}-${String(nextMonth + 1).padStart(2, "0")}-10`,
+    };
+  }
+}
+
 function buildLedger(
   bills: Bill[],
   receipts: Receipt[],
@@ -40,12 +71,14 @@ function buildLedger(
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
 
   return accountBills.map((bill) => {
+    // Receipts are matched to the NEXT period (payment received after bill)
+    const next = getNextPeriodRange(bill.startDate, bill.endDate);
     const periodReceipts = receipts
       .filter(
         (r) =>
           r.accountId === accountId &&
-          r.date >= bill.startDate &&
-          r.date <= bill.endDate
+          r.date >= next.start &&
+          r.date <= next.end
       )
       .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -73,26 +106,44 @@ function buildLedger(
 export default function LedgerPage() {
   const { accounts, bills, receipts, loadingBills, loadingAccounts } = useAppData();
 
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
-  const [filterYear, setFilterYear] = useState<number | "all">("all");
+  const [filterYear, setFilterYear] = useState<number | "all">(currentYear);
+  const [filterMonth, setFilterMonth] = useState<number | "all">(currentMonth);
+  const [activeTab, setActiveTab] = useState<"All" | "Purchase From" | "Sale To">("All");
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
+    years.add(currentYear);
     bills.forEach((bill) => {
       const y = parseInt(bill.startDate.substring(0, 4), 10);
       if (!isNaN(y)) years.add(y);
     });
     return Array.from(years).sort((a, b) => b - a);
-  }, [bills]);
+  }, [bills, currentYear]);
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
+  const filteredAccounts = useMemo(() => {
+    if (activeTab === "All") return accounts;
+    return accounts.filter((a) => a.type === activeTab);
+  }, [accounts, activeTab]);
+
   const ledgerRows = useMemo(() => {
     if (!selectedAccountId) return [];
-    const rows = buildLedger(bills, receipts, selectedAccountId);
-    if (filterYear === "all") return rows;
-    return rows.filter((r) => r.startDate.startsWith(String(filterYear)));
-  }, [bills, receipts, selectedAccountId, filterYear]);
+    let rows = buildLedger(bills, receipts, selectedAccountId);
+    if (filterYear !== "all") {
+      rows = rows.filter((r) => r.startDate.startsWith(String(filterYear)));
+    }
+    if (filterMonth !== "all") {
+      const mm = String(filterMonth).padStart(2, "0");
+      rows = rows.filter((r) => r.startDate.substring(5, 7) === mm);
+    }
+    return rows.sort((a, b) => b.startDate.localeCompare(a.startDate));
+  }, [bills, receipts, selectedAccountId, filterYear, filterMonth]);
 
   const escapeHtml = (value: string) =>
     value
@@ -173,6 +224,7 @@ export default function LedgerPage() {
           <body>
             <h1>${escapeHtml(selectedAccount.name)}</h1>
             <p class="subtitle">Account Ledger${filterYear !== "all" ? ` — ${filterYear}` : ""} · ${selectedAccount.type}</p>
+            <p class="subtitle" style="color:#6b7280;font-style:italic;">Note: Receipts shown are from the next period (payment received after bill generation)</p>
             <table>
               <thead>
                 <tr>
@@ -221,41 +273,97 @@ export default function LedgerPage() {
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-lg border bg-white dark:bg-slate-900 p-4">
-        <div className="space-y-2">
-          <Label>Account</Label>
-          <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select an account…" />
-            </SelectTrigger>
-            <SelectContent>
-              {accounts.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.name}
-                  <span className="ml-2 text-xs text-slate-400">({a.type})</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Year</Label>
-          <Select
-            value={String(filterYear)}
-            onValueChange={(v) => setFilterYear(v === "all" ? "all" : Number(v))}
+      <div className="rounded-lg border bg-white dark:bg-slate-900 p-4 space-y-4">
+        <div className="flex border-b">
+          <button
+            type="button"
+            onClick={() => { setActiveTab("All"); setSelectedAccountId(""); }}
+            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === "All"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
           >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Years</SelectItem>
-              {availableYears.map((y) => (
-                <SelectItem key={y} value={String(y)}>
-                  {y}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab("Purchase From"); setSelectedAccountId(""); }}
+            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === "Purchase From"
+                ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Purchase From
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab("Sale To"); setSelectedAccountId(""); }}
+            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === "Sale To"
+                ? "border-green-500 text-green-600 dark:text-green-400"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Sale To
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label>Account</Label>
+            <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select an account…" />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredAccounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                    <span className="ml-2 text-xs text-slate-400">({a.type})</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Month</Label>
+            <Select
+              value={String(filterMonth)}
+              onValueChange={(v) => setFilterMonth(v === "all" ? "all" : Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Months</SelectItem>
+                {MONTHS.map((m, i) => (
+                  <SelectItem key={i + 1} value={String(i + 1)}>
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Year</Label>
+            <Select
+              value={String(filterYear)}
+              onValueChange={(v) => setFilterYear(v === "all" ? "all" : Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Years</SelectItem>
+                {availableYears.map((y) => (
+                  <SelectItem key={y} value={String(y)}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -286,6 +394,9 @@ export default function LedgerPage() {
             <div className="text-xs text-slate-400">
               {ledgerRows.length} period{ledgerRows.length !== 1 ? "s" : ""}
             </div>
+          </div>
+          <div className="border-b px-4 py-2 bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300">
+            Receipts are shown from the next period (payment received after bill generation)
           </div>
 
           <div className="overflow-x-auto">
