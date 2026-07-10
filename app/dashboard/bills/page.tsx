@@ -36,6 +36,7 @@ export default function BillsPage() {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [period, setPeriod] = useState("1-10");
+  const [generateScope, setGenerateScope] = useState<"All" | "Purchase From" | "Sale To">("All");
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -130,7 +131,11 @@ export default function BillsPage() {
     });
   }, [accounts, bills, startStr, endStr, getLogsForPeriod, selectedPeriodReceipts]);
 
-  const toGenerate = accountPreviews.filter((p) => p.willGenerate);
+  const toGenerate = accountPreviews.filter((p) => {
+    if (!p.willGenerate) return false;
+    if (generateScope === "All") return true;
+    return p.account.type === generateScope;
+  });
   const alreadyDone = accountPreviews.filter((p) => !!p.existingBill);
   const noLogs = accountPreviews.filter((p) => !p.existingBill && p.logsCount === 0);
   const accountTypeById = useMemo(() => new Map(accounts.map((account) => [account.id, account.type] as const)), [accounts]);
@@ -716,7 +721,8 @@ export default function BillsPage() {
     setSaving(true);
 
     try {
-      const existingBillsToReplace = accountPreviews
+      // Only delete bills for accounts that are being regenerated
+      const existingBillsToReplace = toGenerate
         .map(({ existingBill }) => existingBill)
         .filter((bill): bill is Bill => !!bill);
 
@@ -774,12 +780,23 @@ export default function BillsPage() {
 
           <DialogContent className="w-[min(96vw,72rem)] max-w-none sm:max-w-none max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Generate 10-Day Dassiya — All Accounts</DialogTitle>
+              <DialogTitle>Generate 10-Day Dassiya</DialogTitle>
             </DialogHeader>
 
             <div className="space-y-4">
-              {/* Period selectors */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Account type dropdown + Period selectors */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label>Account Type</Label>
+                  <Select value={generateScope} onValueChange={(v) => setGenerateScope(v as typeof generateScope)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All</SelectItem>
+                      <SelectItem value="Purchase From">Purchase From</SelectItem>
+                      <SelectItem value="Sale To">Sale To</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-2">
                   <Label>Month</Label>
                   <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>

@@ -113,7 +113,7 @@ export default function LedgerPage() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [filterYear, setFilterYear] = useState<number | "all">(currentYear);
   const [filterMonth, setFilterMonth] = useState<number | "all">(currentMonth);
-  const [activeTab, setActiveTab] = useState<"All" | "Purchase From" | "Sale To">("All");
+  const [activeTab, setActiveTab] = useState<"Purchase From" | "Sale To">("Purchase From");
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -128,7 +128,6 @@ export default function LedgerPage() {
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
   const filteredAccounts = useMemo(() => {
-    if (activeTab === "All") return accounts;
     return accounts.filter((a) => a.type === activeTab);
   }, [accounts, activeTab]);
 
@@ -275,17 +274,6 @@ export default function LedgerPage() {
       {/* Filters */}
       <div className="rounded-lg border bg-white dark:bg-slate-900 p-4 space-y-4">
         <div className="flex border-b">
-          <button
-            type="button"
-            onClick={() => { setActiveTab("All"); setSelectedAccountId(""); }}
-            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
-              activeTab === "All"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            All
-          </button>
           <button
             type="button"
             onClick={() => { setActiveTab("Purchase From"); setSelectedAccountId(""); }}
