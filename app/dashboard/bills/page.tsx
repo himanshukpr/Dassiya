@@ -308,77 +308,16 @@ export default function BillsPage() {
       (b) => b.accountId === accountId && b.startDate === startStr && b.endDate === endStr
     );
 
-    type StatementRow = {
-      MorningCowQty: number;
-      MorningCowAmt: number;
-      MorningBuffaloQty: number;
-      MorningBuffaloFat: number;
-      MorningBuffaloAmt: number;
-      MorningSapretaQty: number;
-      MorningSapretaAmt: number;
-      EveningCowQty: number;
-      EveningCowAmt: number;
-      EveningBuffaloQty: number;
-      EveningBuffaloFat: number;
-      EveningBuffaloAmt: number;
-      EveningSapretaQty: number;
-      EveningSapretaAmt: number;
-    };
-
     const accountLogs = selectedPeriodLogs
       .filter((log) => log.accountId === accountId)
       .sort((left, right) => left.date.localeCompare(right.date));
 
-    const dateMap = new Map<string, StatementRow>();
+    // Group logs by date
+    const dateMap = new Map<string, typeof accountLogs>();
     accountLogs.forEach((log) => {
-      const row: StatementRow = dateMap.get(log.date) ?? {
-        MorningCowQty: 0,
-        MorningCowAmt: 0,
-        MorningBuffaloQty: 0,
-        MorningBuffaloFat: 0,
-        MorningBuffaloAmt: 0,
-        MorningSapretaQty: 0,
-        MorningSapretaAmt: 0,
-        EveningCowQty: 0,
-        EveningCowAmt: 0,
-        EveningBuffaloQty: 0,
-        EveningBuffaloFat: 0,
-        EveningBuffaloAmt: 0,
-        EveningSapretaQty: 0,
-        EveningSapretaAmt: 0,
-      };
-
-      const qty = log.qty ?? 0;
-      const fat = log.fat ?? 0;
-      const amount = log.amount ?? 0;
-
-      if (log.timePeriod === "Morning") {
-        if (log.milkType === "Cow") {
-          row.MorningCowQty += qty;
-          row.MorningCowAmt += amount;
-        } else if (log.milkType === "Buffalo") {
-          row.MorningBuffaloQty += qty;
-          row.MorningBuffaloFat = fat || row.MorningBuffaloFat;
-          row.MorningBuffaloAmt += amount;
-        } else if (log.milkType === "Sapreta") {
-          row.MorningSapretaQty += qty;
-          row.MorningSapretaAmt += amount;
-        }
-      } else {
-        if (log.milkType === "Cow") {
-          row.EveningCowQty += qty;
-          row.EveningCowAmt += amount;
-        } else if (log.milkType === "Buffalo") {
-          row.EveningBuffaloQty += qty;
-          row.EveningBuffaloFat = fat || row.EveningBuffaloFat;
-          row.EveningBuffaloAmt += amount;
-        } else if (log.milkType === "Sapreta") {
-          row.EveningSapretaQty += qty;
-          row.EveningSapretaAmt += amount;
-        }
-      }
-
-      dateMap.set(log.date, row);
+      const existing = dateMap.get(log.date) ?? [];
+      existing.push(log);
+      dateMap.set(log.date, existing);
     });
 
     const dates = Array.from(dateMap.keys()).sort();
@@ -390,74 +329,6 @@ export default function BillsPage() {
     let eveningBuffaloTotal = 0;
     let eveningSapretaTotal = 0;
 
-    const rows = dates.map((date) => {
-      const row: StatementRow = dateMap.get(date) ?? {
-        MorningCowQty: 0,
-        MorningCowAmt: 0,
-        MorningBuffaloQty: 0,
-        MorningBuffaloFat: 0,
-        MorningBuffaloAmt: 0,
-        MorningSapretaQty: 0,
-        MorningSapretaAmt: 0,
-        EveningCowQty: 0,
-        EveningCowAmt: 0,
-        EveningBuffaloQty: 0,
-        EveningBuffaloFat: 0,
-        EveningBuffaloAmt: 0,
-        EveningSapretaQty: 0,
-        EveningSapretaAmt: 0,
-      };
-      const morningCowAmt = row.MorningCowAmt ?? 0;
-      const morningBuffaloAmt = row.MorningBuffaloAmt ?? 0;
-      const morningSapretaAmt = row.MorningSapretaAmt ?? 0;
-      const eveningCowAmt = row.EveningCowAmt ?? 0;
-      const eveningBuffaloAmt = row.EveningBuffaloAmt ?? 0;
-      const eveningSapretaAmt = row.EveningSapretaAmt ?? 0;
-
-      const morningCowQty = row.MorningCowQty ?? 0;
-      const morningBuffaloQty = row.MorningBuffaloQty ?? 0;
-      const morningSapretaQty = row.MorningSapretaQty ?? 0;
-      const morningBuffaloFat = row.MorningBuffaloFat ?? 0;
-      const eveningCowQty = row.EveningCowQty ?? 0;
-      const eveningBuffaloQty = row.EveningBuffaloQty ?? 0;
-      const eveningSapretaQty = row.EveningSapretaQty ?? 0;
-      const eveningBuffaloFat = row.EveningBuffaloFat ?? 0;
-
-      morningCowTotal += morningCowAmt;
-      morningBuffaloTotal += morningBuffaloAmt;
-      morningSapretaTotal += morningSapretaAmt;
-      eveningCowTotal += eveningCowAmt;
-      eveningBuffaloTotal += eveningBuffaloAmt;
-      eveningSapretaTotal += eveningSapretaAmt;
-
-      return `
-        <tr>
-          <td class="text-right"><strong>${new Date(date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</strong></td>
-          <td class="text-right">${morningCowQty ? morningCowQty.toFixed(1) : ""}</td>
-          <td class="text-right">${morningSapretaQty ? morningSapretaQty.toFixed(1) : ""}</td>
-          <td class="text-right">${morningBuffaloQty ? morningBuffaloQty.toFixed(1) : ""}</td>
-          <td class="text-right">${morningBuffaloFat ? morningBuffaloFat.toFixed(1) : ""}</td>
-          <td class="text-right">${morningBuffaloAmt ? morningBuffaloAmt.toFixed(0) : ""}</td>
-          <td class="text-right">${eveningCowQty ? eveningCowQty.toFixed(1) : ""}</td>
-          <td class="text-right">${eveningSapretaQty ? eveningSapretaQty.toFixed(1) : ""}</td>
-          <td class="text-right">${eveningBuffaloQty ? eveningBuffaloQty.toFixed(1) : ""}</td>
-          <td class="text-right">${eveningBuffaloFat ? eveningBuffaloFat.toFixed(1) : ""}</td>
-          <td class="text-right">${eveningBuffaloAmt ? eveningBuffaloAmt.toFixed(0) : ""}</td>
-        </tr>
-      `;
-    }).join("");
-
-    const morningTotal = morningCowTotal + morningBuffaloTotal + morningSapretaTotal;
-    const eveningTotal = eveningCowTotal + eveningBuffaloTotal + eveningSapretaTotal;
-    const grandTotal = morningCowTotal + morningBuffaloTotal + morningSapretaTotal + eveningCowTotal + eveningBuffaloTotal + eveningSapretaTotal;
-
-    // Calculate effective rates by dividing amount by qty
-    const morningCowRate = morningCowTotal > 0 ? (morningCowTotal / morningCowTotal) : 0; // This will always be 1, we need the actual rate
-    const eveningCowRate = eveningCowTotal > 0 ? (eveningCowTotal / eveningCowTotal) : 0;
-    const morningSapretaRate = morningSapretaTotal > 0 ? (morningSapretaTotal / morningSapretaTotal) : 0;
-    const eveningSapretaRate = eveningSapretaTotal > 0 ? (eveningSapretaTotal / eveningSapretaTotal) : 0;
-
-    // Track quantities separately for the calculation display
     let totalMorningCowQty = 0;
     let totalMorningBuffaloQty = 0;
     let totalMorningSapretaQty = 0;
@@ -465,14 +336,59 @@ export default function BillsPage() {
     let totalEveningBuffaloQty = 0;
     let totalEveningSapretaQty = 0;
 
-    dateMap.forEach((row) => {
-      totalMorningCowQty += row.MorningCowQty;
-      totalMorningBuffaloQty += row.MorningBuffaloQty;
-      totalMorningSapretaQty += row.MorningSapretaQty;
-      totalEveningCowQty += row.EveningCowQty;
-      totalEveningBuffaloQty += row.EveningBuffaloQty;
-      totalEveningSapretaQty += row.EveningSapretaQty;
-    });
+    const rows = dates.map((date) => {
+      const logs = dateMap.get(date) ?? [];
+
+      // Collect values per cell, stacked with <br>
+      const morningCow: string[] = [];
+      const morningSap: string[] = [];
+      const morningBuf: string[] = [];
+      const morningBufFat: string[] = [];
+      const morningBufAmt: string[] = [];
+      const eveningCow: string[] = [];
+      const eveningSap: string[] = [];
+      const eveningBuf: string[] = [];
+      const eveningBufFat: string[] = [];
+      const eveningBufAmt: string[] = [];
+
+      logs.forEach((log) => {
+        const qty = log.qty ?? 0;
+        const fat = log.fat ?? 0;
+        const amount = log.amount ?? 0;
+
+        if (log.timePeriod === "Morning") {
+          if (log.milkType === "Cow") { morningCow.push(qty.toFixed(1)); morningCowTotal += amount; totalMorningCowQty += qty; }
+          else if (log.milkType === "Buffalo") { morningBuf.push(qty.toFixed(1)); morningBufFat.push(fat.toFixed(1)); morningBufAmt.push(amount.toFixed(0)); morningBuffaloTotal += amount; totalMorningBuffaloQty += qty; }
+          else if (log.milkType === "Sapreta") { morningSap.push(qty.toFixed(1)); morningSapretaTotal += amount; totalMorningSapretaQty += qty; }
+        } else {
+          if (log.milkType === "Cow") { eveningCow.push(qty.toFixed(1)); eveningCowTotal += amount; totalEveningCowQty += qty; }
+          else if (log.milkType === "Buffalo") { eveningBuf.push(qty.toFixed(1)); eveningBufFat.push(fat.toFixed(1)); eveningBufAmt.push(amount.toFixed(0)); eveningBuffaloTotal += amount; totalEveningBuffaloQty += qty; }
+          else if (log.milkType === "Sapreta") { eveningSap.push(qty.toFixed(1)); eveningSapretaTotal += amount; totalEveningSapretaQty += qty; }
+        }
+      });
+
+      const cell = (values: string[]) => values.join("<br>");
+
+      return `
+        <tr>
+          <td class="text-right" style="vertical-align:top;"><strong>${new Date(date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</strong></td>
+          <td class="text-right" style="white-space:pre-line;">${cell(morningCow)}</td>
+          <td class="text-right" style="white-space:pre-line;">${cell(morningSap)}</td>
+          <td class="text-right" style="white-space:pre-line;">${cell(morningBuf)}</td>
+          <td class="text-right" style="white-space:pre-line;">${cell(morningBufFat)}</td>
+          <td class="text-right" style="white-space:pre-line;">${cell(morningBufAmt)}</td>
+          <td class="text-right" style="white-space:pre-line;">${cell(eveningCow)}</td>
+          <td class="text-right" style="white-space:pre-line;">${cell(eveningSap)}</td>
+          <td class="text-right" style="white-space:pre-line;">${cell(eveningBuf)}</td>
+          <td class="text-right" style="white-space:pre-line;">${cell(eveningBufFat)}</td>
+          <td class="text-right" style="white-space:pre-line;">${cell(eveningBufAmt)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    const morningTotal = morningCowTotal + morningBuffaloTotal + morningSapretaTotal;
+    const eveningTotal = eveningCowTotal + eveningBuffaloTotal + eveningSapretaTotal;
+    const grandTotal = morningCowTotal + morningBuffaloTotal + morningSapretaTotal + eveningCowTotal + eveningBuffaloTotal + eveningSapretaTotal;
 
     return `
       <div class="section">
