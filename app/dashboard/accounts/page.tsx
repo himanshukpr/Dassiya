@@ -66,6 +66,7 @@ export default function AccountsPage() {
   const [rateForm, setRateForm] = useState<Rates>(DEFAULT_RATES);
   const [fixedFatMorning, setFixedFatMorning] = useState(""); // empty = no fixed fat for morning
   const [fixedFatEvening, setFixedFatEvening] = useState(""); // empty = no fixed fat for evening
+  const [blockBalance, setBlockBalance] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"All" | "Purchase From" | "Sale To">("Purchase From");
 
@@ -90,10 +91,11 @@ export default function AccountsPage() {
       name,
       type,
       mobile,
-      previousBalance: parseFloat(previousBalance) || 0,
+      previousBalance: blockBalance ? 0 : (parseFloat(previousBalance) || 0),
       rateOverrides: rateMode === "custom" ? rateForm : null,
       fixedFatMorning: fixedFatMorning !== "" ? parseFloat(fixedFatMorning) || 0 : null,
       fixedFatEvening: fixedFatEvening !== "" ? parseFloat(fixedFatEvening) || 0 : null,
+      blockBalance,
     };
     if (editingId) {
       await updateAccount(editingId, data);
@@ -115,6 +117,7 @@ export default function AccountsPage() {
     setRateForm(createDefaultRateForm(account.rateOverrides));
     setFixedFatMorning(account.fixedFatMorning != null ? String(account.fixedFatMorning) : "");
     setFixedFatEvening(account.fixedFatEvening != null ? String(account.fixedFatEvening) : "");
+    setBlockBalance(account.blockBalance ?? false);
     setIsDialogOpen(true);
   };
 
@@ -133,6 +136,7 @@ export default function AccountsPage() {
     setRateForm(DEFAULT_RATES);
     setFixedFatMorning("");
     setFixedFatEvening("");
+    setBlockBalance(false);
   };
 
   return (
@@ -168,7 +172,20 @@ export default function AccountsPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="balance">Previous Balance (₹)</Label>
-                <Input id="balance" type="number" step="0.01" value={previousBalance} onChange={(e) => setPreviousBalance(e.target.value)} required />
+                <Input id="balance" type="number" step="0.01" value={blockBalance ? "0" : previousBalance} onChange={(e) => setPreviousBalance(e.target.value)} disabled={blockBalance} required />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="blockBalance"
+                  checked={blockBalance}
+                  onChange={(e) => { setBlockBalance(e.target.checked); if (e.target.checked) setPreviousBalance(""); }}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                <Label htmlFor="blockBalance" className="text-sm font-medium cursor-pointer">
+                  Block Balance Calculations
+                  <span className="ml-1 text-xs font-normal text-slate-500">(skip balance for bills & receipts)</span>
+                </Label>
               </div>
 
               {/* Fixed fat for buffalo milk — per period */}
@@ -351,6 +368,11 @@ export default function AccountsPage() {
                   <TableCell className="text-slate-400 text-sm">{idx + 1}</TableCell>
                   <TableCell className="font-medium">
                     {account.name}
+                    {account.blockBalance && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                        Balance blocked
+                      </span>
+                    )}
                     {account.rateOverrides && (
                       <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300">
                         Custom rates

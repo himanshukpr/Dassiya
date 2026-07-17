@@ -32,6 +32,7 @@ type LogDraft = {
   qty: string;
   fat: string;
   timePeriod: TimePeriod;
+  date: string;
 };
 
 function normalizeDecimalInput(value: string) {
@@ -53,6 +54,7 @@ export default function LogsPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [editingLog, setEditingLog] = useState<MilkLog | null>(null);
+  const [editingDateLogs, setEditingDateLogs] = useState<MilkLog[] | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -95,6 +97,7 @@ export default function LogsPage() {
     qty: "",
     fat: "",
     timePeriod,
+    date,
     ...overrides,
   });
 
@@ -134,8 +137,11 @@ export default function LogsPage() {
   // Table filters
   const [filterDate, setFilterDate] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"All" | "Morning" | "Evening">("All");
-  const [filterAccountType, setFilterAccountType] = useState<"All" | "Purchase From" | "Sale To">("All");
+  const [filterAccountType, setFilterAccountType] = useState<"Purchase From" | "Sale To">("Purchase From");
   const [logSearch, setLogSearch] = useState("");
+  // Hierarchical view state
+  const [selectedAccountName, setSelectedAccountName] = useState<string | null>(null);
+  const [selectedPeriodLabel, setSelectedPeriodLabel] = useState<string | null>(null);
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
   const effectiveRates = useMemo(
@@ -147,6 +153,11 @@ export default function LogsPage() {
   const addModeAccounts = useMemo(
     () => accounts.filter((a) => a.type === addAccountType),
     [accounts, addAccountType]
+  );
+
+  const editingLogAccounts = useMemo(
+    () => accounts.filter((a) => a.type === (editingLog?.accountType || addAccountType)),
+    [accounts, editingLog, addAccountType]
   );
 
   // Persist draft rows and addAccountType to sessionStorage
@@ -222,7 +233,7 @@ export default function LogsPage() {
 
   const recentLogs = useMemo(() => {
     const typeFilter = editingLog ? filterAccountType : addAccountType;
-    const filtered = typeFilter === "All" ? logs : logs.filter((l) => l.accountType === typeFilter);
+    const filtered = logs.filter((l) => l.accountType === typeFilter);
     return [...filtered].sort(sortByCreatedAt).slice(0, 5);
   }, [logs, filterAccountType, addAccountType, editingLog]);
 
@@ -261,7 +272,7 @@ export default function LogsPage() {
       accountId: row.accountId,
       accountName: rowAccount.name,
       accountType: rowAccount.type,
-      date,
+      date: row.date,
       milkType: row.milkType,
       qty,
       fat,
@@ -276,6 +287,7 @@ export default function LogsPage() {
 
     for (let index = 0; index < logRows.length; index += 1) {
       const row = logRows[index];
+      if (!row.date) return `Row ${index + 1}: select a date.`;
       if (!row.accountId) {
         return `Row ${index + 1}: select an account.`;
       }
@@ -298,14 +310,47 @@ export default function LogsPage() {
     const query = logSearch.trim().toLowerCase();
     return logs
       .filter((log) => {
-        const matchesDate = !filterDate || log.date === filterDate;
-        const matchesPeriod = filterPeriod === "All" || log.timePeriod === filterPeriod;
-        const matchesAccountType = filterAccountType === "All" || log.accountType === filterAccountType;
+        const matchesAccountType = log.accountType === filterAccountType;
         const matchesSearch = !query || log.accountName.toLowerCase().includes(query);
-        return matchesDate && matchesPeriod && matchesAccountType && matchesSearch;
+        return matchesAccountType && matchesSearch;
       })
       .sort(sortByCreatedAt);
-  }, [logs, filterDate, filterPeriod, filterAccountType, logSearch]);
+  }, [logs, filterAccountType, logSearch]);
+
+  // Helper to get period label from date
+  const getPeriodLabel = (dateStr: string): string => {
+    const day = parseInt(dateStr.split("-")[2], 10);
+    const month = new Date(dateStr + "T00:00:00").toLocaleString("en-US", { month: "long" });
+    const year = dateStr.split("-")[0];
+    if (day <= 10) return `${month} ${year} (1-10)`;
+    if (day <= 20) return `${month} ${year} (11-20)`;
+    return `${month} ${year} (21-end)`;
+  };
+
+  // Group logs by account name
+  const accountGroups = useMemo(() => {
+    const groups = new Map<string, typeof filteredLogs>();
+    filteredLogs.forEach((log) => {
+      const existing = groups.get(log.accountName) ?? [];
+      existing.push(log);
+      groups.set(log.accountName, existing);
+    });
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filteredLogs]);
+
+  // Get logs for selected account, grouped by period
+  const periodGroups = useMemo(() => {
+    if (!selectedAccountName) return [];
+    const accountLogs = filteredLogs.filter((log) => log.accountName === selectedAccountName);
+    const groups = new Map<string, typeof accountLogs>();
+    accountLogs.forEach((log) => {
+      const label = getPeriodLabel(log.date);
+      const existing = groups.get(label) ?? [];
+      existing.push(log);
+      groups.set(label, existing);
+    });
+    return Array.from(groups.entries()).sort((a, b) => b[1][0].date.localeCompare(a[1][0].date));
+  }, [filteredLogs, selectedAccountName]);
 
   // Live amount preview — recalculates whenever any field changes
   const previewAmount = useMemo(() => {
@@ -332,15 +377,33 @@ export default function LogsPage() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const handleEdit = (log: MilkLog) => {
-    setEditingLog(log);
-    setAccountId(log.accountId);
-    setAccountSearch(log.accountName);
-    setDate(log.date);
-    setMilkType(log.milkType);
-    setQty(String(log.qty));
-    setFat(log.milkType === "Buffalo" ? String(log.fat) : "");
-    setTimePeriod(log.timePeriod);
+  const handleEdit = (dateLogs: MilkLog[]) => {
+    if (dateLogs.length === 0) return;
+    const firstLog = dateLogs[0];
+    setEditingDateLogs(dateLogs);
+    setEditingLog(firstLog);
+    setDate(firstLog.date);
+    setAddAccountType(firstLog.accountType);
+
+    // Populate logRows with all logs for this date, preserving each log's date
+    const rows: LogDraft[] = dateLogs.map((log) => ({
+      rowId: createRowId(),
+      accountId: log.accountId,
+      milkType: log.milkType,
+      qty: String(log.qty),
+      fat: log.milkType === "Buffalo" ? String(log.fat) : "",
+      timePeriod: log.timePeriod,
+      date: log.date,
+    }));
+    setLogRows(rows);
+
+    // Also set single-edit fields for backward compat
+    setAccountId(firstLog.accountId);
+    setAccountSearch(firstLog.accountName);
+    setMilkType(firstLog.milkType);
+    setQty(String(firstLog.qty));
+    setFat(firstLog.milkType === "Buffalo" ? String(firstLog.fat) : "");
+    setTimePeriod(firstLog.timePeriod);
     setIsDialogOpen(true);
   };
 
@@ -349,23 +412,45 @@ export default function LogsPage() {
     setSaving(true);
 
     try {
-      if (editingLog) {
-        const row: LogDraft = { rowId: "editing", accountId: editingLog.accountId, milkType, qty, fat, timePeriod };
-        const data = buildLogData(row);
-        if (!data) return;
+      if (editingDateLogs && editingDateLogs.length > 0) {
+        // Batch update: update all logs for this date
+        const validationError = validateLogRows();
+        if (validationError) {
+          setToast({ message: validationError, variant: "error" });
+          return;
+        }
 
-        await updateLog(editingLog.id, data);
+        const dataRows = logRows.map(buildLogData).filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+        // Update existing logs and add new ones
+        const existingCount = editingDateLogs.length;
+        const promises: Promise<void>[] = [];
+
+        for (let i = 0; i < dataRows.length; i++) {
+          if (i < existingCount) {
+            // Update existing log
+            promises.push(updateLog(editingDateLogs[i].id, dataRows[i]));
+          } else {
+            // Add new log
+            promises.push(addLog(dataRows[i]));
+          }
+        }
+
+        // Delete logs that were removed (if fewer rows now)
+        for (let i = dataRows.length; i < existingCount; i++) {
+          promises.push(deleteLog(editingDateLogs[i].id));
+        }
+
+        await Promise.all(promises);
         setToast({
-          message: `Milk log updated for ${editingLog.accountName}.`,
+          message: `${dataRows.length} milk log${dataRows.length === 1 ? "" : "s"} updated successfully.`,
           variant: "success",
         });
       } else {
+        // Add new logs
         const validationError = validateLogRows();
         if (validationError) {
-          setToast({
-            message: validationError,
-            variant: "error",
-          });
+          setToast({ message: validationError, variant: "error" });
           return;
         }
 
@@ -382,6 +467,7 @@ export default function LogsPage() {
       }
 
       setEditingLog(null);
+      setEditingDateLogs(null);
       resetForm({ preserveCache: true });
     } catch (error) {
       console.error("save log failed:", error);
@@ -415,13 +501,6 @@ export default function LogsPage() {
     setQty("");
     setFat("");
     setAddAccountType("Purchase From");
-  };
-
-  const clearFilters = () => {
-    setFilterDate("");
-    setFilterPeriod("All");
-    setFilterAccountType("All");
-    setLogSearch("");
   };
 
   const accountPicker = (
@@ -506,149 +585,306 @@ export default function LogsPage() {
             onPointerDownOutside={(event) => event.preventDefault()}
           >
             <DialogHeader>
-              <DialogTitle>{editingLog ? "Edit Milk Log" : "Add Milk Log"}</DialogTitle>
+              <DialogTitle>{editingDateLogs ? `Edit ${editingDateLogs.length} Log${editingDateLogs.length > 1 ? "s" : ""}` : "Add Milk Log"}</DialogTitle>
               <DialogDescription className="sr-only">
-                {editingLog ? "Edit the milk log entry." : "Add a new milk log by selecting the time period, account, date, milk type, quantity, and fat if needed."}
+                {editingDateLogs ? "Edit the milk log entries for this date." : "Add a new milk log by selecting the time period, account, date, milk type, quantity, and fat if needed."}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,1fr)] lg:gap-6">
               <form onSubmit={handleSubmit} className="space-y-4">
-                {editingLog ? (
+                {editingDateLogs ? (
                   <div className="space-y-4">
-                    {accountPicker}
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Time Period</Label>
-                        <Select
-                          value={timePeriod}
-                          onValueChange={(val: TimePeriod) => {
-                            setTimePeriod(val);
-                            if (milkType === "Buffalo" && selectedAccount) {
-                              const fixedFat =
-                                val === "Morning"
-                                  ? selectedAccount.fixedFatMorning
-                                  : selectedAccount.fixedFatEvening;
-                              if (fixedFat != null) {
-                                setFat(String(fixedFat));
-                              }
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Morning">Morning</SelectItem>
-                            <SelectItem value="Evening">Evening</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-date">Date</Label>
-                        <Input id="edit-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-date">Date</Label>
+                      <Input id="edit-date" type="date" value={date} onChange={(e) => {
+                        const newDate = e.target.value;
+                        setDate(newDate);
+                        setLogRows((prev) => prev.map((row) => ({ ...row, date: newDate })));
+                      }} required />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Milk Type</Label>
-                        <Select
-                          value={milkType}
-                          onValueChange={(val: MilkType) => {
-                            setMilkType(val);
-                            if (val === "Buffalo" && selectedAccount) {
-                              const fixedFat =
-                                timePeriod === "Morning"
-                                  ? selectedAccount.fixedFatMorning
-                                  : selectedAccount.fixedFatEvening;
-                              setFat(fixedFat != null ? String(fixedFat) : "");
-                            } else {
-                              setFat("");
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Buffalo">Buffalo</SelectItem>
-                            <SelectItem value="Cow">Cow</SelectItem>
-                            <SelectItem value="Sapreta">Sapreta</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-qty">Quantity (L/Kg)</Label>
-                        <Input id="edit-qty" type="number" step="0.01" value={qty} onChange={(e) => setQty(e.target.value)} required />
-                      </div>
+                    <div className="flex border-b">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddAccountType("Purchase From");
+                          setLogRows((prev) => prev.map((row) => ({ ...row, accountId: "" })));
+                        }}
+                        className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                          addAccountType === "Purchase From"
+                            ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Purchase From
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddAccountType("Sale To");
+                          setLogRows((prev) => prev.map((row) => ({ ...row, accountId: "" })));
+                        }}
+                        className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                          addAccountType === "Sale To"
+                            ? "border-green-500 text-green-600 dark:text-green-400"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Sale To
+                      </button>
                     </div>
 
-                    {milkType === "Buffalo" ? (
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-fat" className="flex items-center gap-2">
-                          Fat %
-                          {(() => {
-                            const fixedFat =
-                              timePeriod === "Morning"
-                                ? selectedAccount?.fixedFatMorning
-                                : selectedAccount?.fixedFatEvening;
-                            return fixedFat != null ? (
-                              <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
-                                Fixed ({timePeriod}): {fixedFat}
+                    <div className="flex flex-col gap-3 rounded-xl border border-border bg-background/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold">Milk Log Rows</h3>
+                        <p className="text-xs text-muted-foreground">Edit existing entries or add new ones.</p>
+                      </div>
+                      <Button type="button" variant="outline" size="sm" onClick={addLogRow}>
+                        <Plus className="mr-1 h-4 w-4" />
+                        Add Row
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-3 md:hidden">
+                      {logRows.map((row, index) => {
+                        const rowAmount = getRowAmount(row);
+                        const rowAccount = getRowAccount(row);
+                        const fixedFat = getFixedFatForPeriod(row.timePeriod, rowAccount);
+                        const isExisting = editingDateLogs.some((l) => l.id === (editingDateLogs[index]?.id));
+                        return (
+                          <div key={row.rowId} className="rounded-xl border border-border bg-background/60 p-3 shadow-sm">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground">Row {index + 1}{isExisting ? " (existing)" : " (new)"}</p>
+                                <h4 className="text-sm font-semibold">Milk Log</h4>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeLogRow(row.rowId)}
+                                disabled={logRows.length === 1}
+                                aria-label={`Remove row ${index + 1}`}
+                              >
+                                <X className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
+
+                            <div className="space-y-3">
+                              <div className="space-y-2">
+                                <Label>Account</Label>
+                                <Select
+                                  value={row.accountId}
+                                  onValueChange={(val) => {
+                                    updateLogRow(row.rowId, { accountId: val }, true);
+                                  }}
+                                >
+                                  <SelectTrigger className="w-full"><SelectValue placeholder="Select account" /></SelectTrigger>
+                                  <SelectContent>
+                                    {addModeAccounts.length === 0 ? (
+                                      <div className="p-2 text-sm text-muted-foreground">No accounts found.</div>
+                                    ) : (
+                                      addModeAccounts.map((a) => (
+                                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                                      ))
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                  <Label>Period</Label>
+                                  <Select
+                                    value={row.timePeriod}
+                                    onValueChange={(val: TimePeriod) => updateLogRow(row.rowId, { timePeriod: val }, true)}
+                                  >
+                                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Morning">Morning</SelectItem>
+                                      <SelectItem value="Evening">Evening</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Item</Label>
+                                  <Select
+                                    value={row.milkType}
+                                    onValueChange={(val: MilkType) => {
+                                      const acct = getRowAccount(row);
+                                      const fixedFatVal = getFixedFatForPeriod(row.timePeriod, acct);
+                                      updateLogRow(row.rowId, {
+                                        milkType: val,
+                                        fat: val === "Buffalo" ? (fixedFatVal != null ? String(fixedFatVal) : "") : "",
+                                      });
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Buffalo">Buffalo</SelectItem>
+                                      <SelectItem value="Cow">Cow</SelectItem>
+                                      <SelectItem value="Sapreta">Sapreta</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Qty</Label>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={row.qty}
+                                    onChange={(e) => updateLogRow(row.rowId, { qty: e.target.value })}
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                                {row.milkType === "Buffalo" ? (
+                                  <div className="space-y-2">
+                                    <Label>Fat %</Label>
+                                    <Input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={row.fat}
+                                      onChange={(e) => updateLogRow(row.rowId, { fat: normalizeDecimalInput(e.target.value) })}
+                                      placeholder={fixedFat != null ? String(fixedFat) : "0.0"}
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <Label>Fat %</Label>
+                                    <div className="rounded-lg border border-border bg-muted/30 p-2 text-sm text-muted-foreground">
+                                      Not needed
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between rounded-lg border border-border bg-muted/30 p-3">
+                              <span className="text-sm text-muted-foreground">Row Amount</span>
+                              <span className="text-lg font-bold text-green-700 dark:text-green-400">
+                                {rowAmount !== null ? `₹${rowAmount.toFixed(2)}` : "—"}
                               </span>
-                            ) : null;
-                          })()}
-                        </Label>
-                        <Input
-                          id="edit-fat"
-                          type="text"
-                          inputMode="decimal"
-                          value={fat}
-                          onChange={(e) => {
-                            const raw = e.target.value.replace(/[^0-9.]/g, "");
-                            if (!raw.includes(".") && raw.length >= 2) {
-                              setFat(raw.slice(0, -1) + "." + raw.slice(-1));
-                            } else {
-                              setFat(raw);
-                            }
-                          }}
-                          required
-                        />
-                        {(() => {
-                          const fixedFat =
-                            timePeriod === "Morning"
-                              ? selectedAccount?.fixedFatMorning
-                              : selectedAccount?.fixedFatEvening;
-                          return fixedFat != null && fat === String(fixedFat) ? (
-                            <p className="text-[11px] text-purple-600 dark:text-purple-400">
-                              Auto-filled from account fixed fat for {timePeriod}. You can override it for this entry.
-                            </p>
-                          ) : null;
-                        })()}
-                      </div>
-                    ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
 
-                    {previewAmount !== null ? (
-                      <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-950/30">
-                        <div className="text-sm text-green-700 dark:text-green-400">
-                          <span className="font-medium">Auto-calculated Amount</span>
-                          {milkType === "Buffalo" && fat && (
-                            <p className="mt-0.5 text-xs text-green-600 dark:text-green-500">
-                              {qty} L × {parseFloat(fat).toFixed(2)} fat × ₹{
-                                (() => {
-                                  if (!selectedAccount) return 0;
-                                  const dir = selectedAccount.type === "Purchase From" ? "Purchase" : "Sale";
-                                  const key = `buffalo${timePeriod}${dir}` as keyof typeof effectiveRates;
-                                  return effectiveRates[key];
-                                })()
-                              }/fat
-                            </p>
-                          )}
-                        </div>
-                        <span className="text-xl font-bold text-green-700 dark:text-green-300">₹{previewAmount.toFixed(2)}</span>
-                      </div>
-                    ) : selectedAccount && qty ? (
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-slate-100/50 dark:bg-slate-800/50 text-slate-500">
+                            <th className="px-2 py-2 text-left font-medium w-[30px]">#</th>
+                            <th className="px-2 py-2 text-left font-medium">Account</th>
+                            <th className="px-2 py-2 text-left font-medium">Period</th>
+                            <th className="px-2 py-2 text-left font-medium">Type</th>
+                            <th className="px-2 py-2 text-right font-medium">Qty</th>
+                            <th className="px-2 py-2 text-right font-medium">Fat</th>
+                            <th className="px-2 py-2 text-right font-medium">Amount</th>
+                            <th className="px-2 py-2 text-center font-medium w-[50px]"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {logRows.map((row, index) => {
+                            const rowAccount = getRowAccount(row);
+                            const rowAmount = getRowAmount(row);
+                            return (
+                              <tr key={row.rowId} className="hover:bg-white dark:hover:bg-slate-900/50">
+                                <td className="px-2 py-2 text-slate-400">{index + 1}</td>
+                                <td className="px-2 py-2">
+                                  <Select
+                                    value={row.accountId}
+                                    onValueChange={(val) => updateLogRow(row.rowId, { accountId: val }, true)}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
+                                    <SelectContent>
+                                      {addModeAccounts.map((a) => (
+                                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </td>
+                                <td className="px-2 py-2">
+                                  <Select
+                                    value={row.timePeriod}
+                                    onValueChange={(val: TimePeriod) => updateLogRow(row.rowId, { timePeriod: val }, true)}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs w-[90px]"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Morning">Morning</SelectItem>
+                                      <SelectItem value="Evening">Evening</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </td>
+                                <td className="px-2 py-2">
+                                  <Select
+                                    value={row.milkType}
+                                    onValueChange={(val: MilkType) => {
+                                      const acct = getRowAccount(row);
+                                      const fixedFatVal = getFixedFatForPeriod(row.timePeriod, acct);
+                                      updateLogRow(row.rowId, {
+                                        milkType: val,
+                                        fat: val === "Buffalo" ? (fixedFatVal != null ? String(fixedFatVal) : "") : "",
+                                      });
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs w-[100px]"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Buffalo">Buffalo</SelectItem>
+                                      <SelectItem value="Cow">Cow</SelectItem>
+                                      <SelectItem value="Sapreta">Sapreta</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </td>
+                                <td className="px-2 py-2">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    className="h-8 text-xs text-right"
+                                    value={row.qty}
+                                    onChange={(e) => updateLogRow(row.rowId, { qty: e.target.value })}
+                                    placeholder="0"
+                                  />
+                                </td>
+                                <td className="px-2 py-2">
+                                  {row.milkType === "Buffalo" ? (
+                                    <Input
+                                      type="text"
+                                      inputMode="decimal"
+                                      className="h-8 text-xs text-right"
+                                      value={row.fat}
+                                      onChange={(e) => updateLogRow(row.rowId, { fat: normalizeDecimalInput(e.target.value) })}
+                                      placeholder="0.0"
+                                    />
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-2 text-right font-medium text-green-700 dark:text-green-400">
+                                  {rowAmount !== null ? `₹${rowAmount.toFixed(0)}` : "—"}
+                                </td>
+                                <td className="px-2 py-2 text-center">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => removeLogRow(row.rowId)}
+                                    disabled={logRows.length === 1}
+                                  >
+                                    <X className="h-3 w-3 text-red-500" />
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {logRows.some((row) => row.qty && getRowAmount(row) === null) ? (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
-                        Set rates in <strong>Rate Settings</strong> for auto-calculation.
+                        Complete account, quantity, and fat for every row to calculate amounts.
                       </div>
                     ) : null}
                   </div>
@@ -967,7 +1203,7 @@ export default function LogsPage() {
 
                 <DialogFooter className="px-0 pb-0">
                   <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
-                    {saving ? "Saving..." : editingLog ? "Update Log" : "Save Logs"}
+                    {saving ? "Saving..." : editingDateLogs ? "Update Logs" : "Save Logs"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -1021,18 +1257,7 @@ export default function LogsPage() {
         <div className="flex border-b">
           <button
             type="button"
-            onClick={() => setFilterAccountType("All")}
-            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
-              filterAccountType === "All"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterAccountType("Purchase From")}
+            onClick={() => { setFilterAccountType("Purchase From"); setSelectedAccountName(null); setSelectedPeriodLabel(null); }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
               filterAccountType === "Purchase From"
                 ? "border-blue-500 text-blue-600 dark:text-blue-400"
@@ -1043,7 +1268,7 @@ export default function LogsPage() {
           </button>
           <button
             type="button"
-            onClick={() => setFilterAccountType("Sale To")}
+            onClick={() => { setFilterAccountType("Sale To"); setSelectedAccountName(null); setSelectedPeriodLabel(null); }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
               filterAccountType === "Sale To"
                 ? "border-green-500 text-green-600 dark:text-green-400"
@@ -1054,124 +1279,390 @@ export default function LogsPage() {
           </button>
         </div>
 
-        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold">Filters</h2>
-            <p className="text-xs text-muted-foreground">
-              Narrow the log list by date, period, or account name.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-[200px_180px_180px_auto]">
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Search</Label>
-              <div className="relative">
-                <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input
-                  value={logSearch}
-                  onChange={(e) => setLogSearch(e.target.value)}
-                  placeholder="Account name..."
-                  className="pl-9"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="filter-date" className="text-xs text-muted-foreground">
-                Date
-              </Label>
-              <Input
-                id="filter-date"
-                type="date"
-                value={filterDate}
-                onChange={(event) => setFilterDate(event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Period</Label>
-              <Select value={filterPeriod} onValueChange={(value: "All" | "Morning" | "Evening") => setFilterPeriod(value)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="All periods" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All</SelectItem>
-                  <SelectItem value="Morning">Morning</SelectItem>
-                  <SelectItem value="Evening">Evening</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button type="button" variant="outline" className="sm:self-end" onClick={clearFilters}>
-              Clear
-            </Button>
+        <div className="border-b p-4">
+          <div className="relative">
+            <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={logSearch}
+              onChange={(e) => { setLogSearch(e.target.value); setSelectedAccountName(null); setSelectedPeriodLabel(null); }}
+              placeholder="Search account name..."
+              className="pl-9"
+            />
           </div>
         </div>
 
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[50px]">#</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Period</TableHead>
-              <TableHead>Account</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead className="text-right">Qty</TableHead>
-              <TableHead className="text-right">Fat %</TableHead>
-              <TableHead className="text-right">Amount (₹)</TableHead>
-              <TableHead className="w-[100px] text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loadingLogs ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center h-24 text-slate-400">Loading logs...</TableCell>
-              </TableRow>
-            ) : filteredLogs.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center h-24 text-slate-500">
-                  No logs found for the selected filters.
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredLogs.map((log, idx) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-slate-400 text-sm">{idx + 1}</TableCell>
-                  <TableCell>{log.date}</TableCell>
-                  <TableCell>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${log.timePeriod === "Morning"
-                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300"
-                      : "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300"
-                      }`}>
-                      {log.timePeriod}
-                    </span>
-                  </TableCell>
-                  <TableCell className="font-medium">{log.accountName}</TableCell>
-                  <TableCell>{log.milkType}</TableCell>
-                  <TableCell className="text-right">{log.qty}</TableCell>
-                  <TableCell className="text-right">
-                    {log.milkType === "Buffalo" ? (
-                      <span>{(log.fat ?? 0).toFixed(2)}</span>
-                    ) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold text-green-700 dark:text-green-400">
-                    ₹{(log.amount ?? 0).toFixed(2)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(log)}>
-                        <Pencil className="h-4 w-4 text-slate-500" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(log.id)}>
-                        <Trash className="h-4 w-4 text-red-500" />
-                      </Button>
+        {loadingLogs ? (
+          <div className="p-12 text-center text-slate-400">Loading logs...</div>
+        ) : accountGroups.length === 0 ? (
+          <div className="p-12 text-center text-slate-500">
+            No logs found for {filterAccountType} accounts.
+          </div>
+        ) : (
+          <div className="divide-y">
+            {accountGroups.map(([accountName, accountLogs]) => {
+              const isExpanded = selectedAccountName === accountName;
+              const totalAmount = accountLogs.reduce((sum, l) => sum + (l.amount ?? 0), 0);
+              return (
+                <div key={accountName}>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedAccountName(isExpanded ? null : accountName); setSelectedPeriodLabel(null); }}
+                    className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`text-slate-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
+                      <div>
+                        <span className="font-medium text-slate-800 dark:text-slate-100">{accountName}</span>
+                        <span className="ml-2 text-xs text-slate-400">({accountLogs.length} logs)</span>
+                      </div>
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+                    <span className="font-semibold text-green-700 dark:text-green-400">₹{totalAmount.toFixed(2)}</span>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="bg-slate-50/50 dark:bg-slate-800/30">
+                      {periodGroups.map(([periodLabel, periodLogs]) => {
+                        const isPeriodExpanded = selectedPeriodLabel === periodLabel;
+                        const periodTotal = periodLogs.reduce((sum, l) => sum + (l.amount ?? 0), 0);
+                        return (
+                          <div key={periodLabel}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPeriodLabel(isPeriodExpanded ? null : periodLabel)}
+                              className="flex w-full items-center justify-between pl-10 pr-4 py-2.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors border-t border-slate-100 dark:border-slate-800"
+                            >
+                              <div className="flex items-center gap-3">
+                                <span className={`text-slate-400 text-xs transition-transform ${isPeriodExpanded ? "rotate-90" : ""}`}>▶</span>
+                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{periodLabel}</span>
+                                <span className="text-xs text-slate-400">({periodLogs.length})</span>
+                              </div>
+                              <span className="text-sm font-medium text-green-700 dark:text-green-400">₹{periodTotal.toFixed(2)}</span>
+                            </button>
+
+                            {isPeriodExpanded && (() => {
+                              // Sort logs by date then time period
+                              const sortedLogs = [...periodLogs].sort((a, b) => {
+                                const dateCmp = a.date.localeCompare(b.date);
+                                if (dateCmp !== 0) return dateCmp;
+                                return a.timePeriod === "Morning" ? -1 : 1;
+                              });
+
+                              // Calculate totals
+                              let totalMorningCowQty = 0, totalMorningCowAmt = 0;
+                              let totalMorningBufQty = 0, totalMorningBufAmt = 0;
+                              let totalMorningSapQty = 0, totalMorningSapAmt = 0;
+                              let totalEveningCowQty = 0, totalEveningCowAmt = 0;
+                              let totalEveningBufQty = 0, totalEveningBufAmt = 0;
+                              let totalEveningSapQty = 0, totalEveningSapAmt = 0;
+
+                              periodLogs.forEach((log) => {
+                                const qty = log.qty ?? 0;
+                                const amt = log.amount ?? 0;
+                                if (log.timePeriod === "Morning") {
+                                  if (log.milkType === "Cow") { totalMorningCowQty += qty; totalMorningCowAmt += amt; }
+                                  else if (log.milkType === "Buffalo") { totalMorningBufQty += qty; totalMorningBufAmt += amt; }
+                                  else if (log.milkType === "Sapreta") { totalMorningSapQty += qty; totalMorningSapAmt += amt; }
+                                } else {
+                                  if (log.milkType === "Cow") { totalEveningCowQty += qty; totalEveningCowAmt += amt; }
+                                  else if (log.milkType === "Buffalo") { totalEveningBufQty += qty; totalEveningBufAmt += amt; }
+                                  else if (log.milkType === "Sapreta") { totalEveningSapQty += qty; totalEveningSapAmt += amt; }
+                                }
+                              });
+
+                              return (
+                                <div className="border-t border-slate-100 dark:border-slate-800">
+                                  {/* Mobile */}
+                                  <div className="md:hidden">
+                                    {/* Morning section */}
+                                    {(() => {
+                                      const morningLogs = sortedLogs.filter((l) => l.timePeriod === "Morning");
+                                      if (morningLogs.length === 0) return null;
+
+                                      const dateMap = new Map<string, typeof morningLogs>();
+                                      morningLogs.forEach((log) => {
+                                        const existing = dateMap.get(log.date) ?? [];
+                                        existing.push(log);
+                                        dateMap.set(log.date, existing);
+                                      });
+                                      const dates = Array.from(dateMap.keys()).sort();
+
+                                      return (
+                                      <>
+                                        <div className="px-4 py-2 pl-16 bg-yellow-50 dark:bg-yellow-900/20 text-xs font-semibold text-yellow-700 dark:text-yellow-400">
+                                          <span>MORNING</span>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                          <table className="w-full text-xs">
+                                            <thead>
+                                              <tr className="bg-slate-50 dark:bg-slate-800/50 text-slate-500">
+                                                <th className="px-3 py-2 pl-16 text-left font-medium">DATE</th>
+                                                <th className="px-2 py-2 text-left font-normal">TYPE</th>
+                                                <th className="px-2 py-2 text-right font-normal">QTY</th>
+                                                <th className="px-2 py-2 text-right font-normal">FAT</th>
+                                                <th className="px-2 py-2 text-right font-normal">AMT</th>
+                                                <th className="px-2 py-2 text-center font-normal w-[50px]"></th>
+                                              </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                              {dates.map((date) => {
+                                                const dayMorningLogs = dateMap.get(date) ?? [];
+                                                const total = dayMorningLogs.reduce((s, l) => s + (l.amount ?? 0), 0);
+
+                                                return dayMorningLogs.map((log, logIdx) => (
+                                                  <tr key={log.id} className="hover:bg-white dark:hover:bg-slate-900/50">
+                                                    {logIdx === 0 ? (
+                                                      <td className="px-3 py-2 pl-16 font-medium text-slate-700 dark:text-slate-200 align-top whitespace-nowrap" rowSpan={dayMorningLogs.length}>
+                                                        {new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                                                        <span className="ml-1 text-[10px] text-slate-400">({dayMorningLogs.length})</span>
+                                                      </td>
+                                                    ) : null}
+                                                    <td className="px-2 py-2 text-slate-600 dark:text-slate-300">{log.milkType}</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums">{log.qty.toFixed(1)}</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums">{log.milkType === "Buffalo" ? (log.fat ?? 0).toFixed(1) : "—"}</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums font-medium text-green-700 dark:text-green-400">
+                                                      {logIdx === dayMorningLogs.length - 1 ? `₹${total.toFixed(0)}` : ""}
+                                                    </td>
+                                                    <td className="px-2 py-2 text-center">
+                                                      <div className="flex items-center justify-center gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit([log])}>
+                                                          <Pencil className="h-3 w-3 text-slate-500" />
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDelete(log.id)}>
+                                                          <Trash className="h-3 w-3 text-red-500" />
+                                                        </Button>
+                                                      </div>
+                                                    </td>
+                                                  </tr>
+                                                ));
+                                              })}
+                                            </tbody>
+                                            <tfoot>
+                                              <tr className="bg-slate-100/80 dark:bg-slate-800/60 font-semibold text-slate-700 dark:text-slate-200">
+                                                <td className="px-3 py-2 pl-16" colSpan={3}>Total</td>
+                                                <td className="px-2 py-2 text-right tabular-nums">—</td>
+                                                <td className="px-2 py-2 text-right tabular-nums text-green-700 dark:text-green-400">₹{totalMorningCowAmt + totalMorningBufAmt + totalMorningSapAmt}</td>
+                                                <td></td>
+                                              </tr>
+                                            </tfoot>
+                                          </table>
+                                        </div>
+                                      </>
+                                      )})()}
+                                    {/* Evening section */}
+                                    {(() => {
+                                      const eveningLogs = sortedLogs.filter((l) => l.timePeriod === "Evening");
+                                      if (eveningLogs.length === 0) return null;
+
+                                      const dateMap = new Map<string, typeof eveningLogs>();
+                                      eveningLogs.forEach((log) => {
+                                        const existing = dateMap.get(log.date) ?? [];
+                                        existing.push(log);
+                                        dateMap.set(log.date, existing);
+                                      });
+                                      const dates = Array.from(dateMap.keys()).sort();
+
+                                      return (
+                                      <>
+                                        <div className="px-4 py-2 pl-16 bg-indigo-50 dark:bg-indigo-900/20 text-xs font-semibold text-indigo-700 dark:text-indigo-400 border-t border-slate-100 dark:border-slate-800">
+                                          <span>EVENING</span>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                          <table className="w-full text-xs">
+                                            <thead>
+                                              <tr className="bg-slate-50 dark:bg-slate-800/50 text-slate-500">
+                                                <th className="px-3 py-2 pl-16 text-left font-medium">DATE</th>
+                                                <th className="px-2 py-2 text-left font-normal">TYPE</th>
+                                                <th className="px-2 py-2 text-right font-normal">QTY</th>
+                                                <th className="px-2 py-2 text-right font-normal">FAT</th>
+                                                <th className="px-2 py-2 text-right font-normal">AMT</th>
+                                                <th className="px-2 py-2 text-center font-normal w-[50px]"></th>
+                                              </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                              {dates.map((date) => {
+                                                const dayEveningLogs = dateMap.get(date) ?? [];
+                                                const total = dayEveningLogs.reduce((s, l) => s + (l.amount ?? 0), 0);
+
+                                                return dayEveningLogs.map((log, logIdx) => (
+                                                  <tr key={log.id} className="hover:bg-white dark:hover:bg-slate-900/50">
+                                                    {logIdx === 0 ? (
+                                                      <td className="px-3 py-2 pl-16 font-medium text-slate-700 dark:text-slate-200 align-top whitespace-nowrap" rowSpan={dayEveningLogs.length}>
+                                                        {new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                                                        <span className="ml-1 text-[10px] text-slate-400">({dayEveningLogs.length})</span>
+                                                      </td>
+                                                    ) : null}
+                                                    <td className="px-2 py-2 text-slate-600 dark:text-slate-300">{log.milkType}</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums">{log.qty.toFixed(1)}</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums">{log.milkType === "Buffalo" ? (log.fat ?? 0).toFixed(1) : "—"}</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums font-medium text-green-700 dark:text-green-400">
+                                                      {logIdx === dayEveningLogs.length - 1 ? `₹${total.toFixed(0)}` : ""}
+                                                    </td>
+                                                    <td className="px-2 py-2 text-center">
+                                                      <div className="flex items-center justify-center gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit([log])}>
+                                                          <Pencil className="h-3 w-3 text-slate-500" />
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDelete(log.id)}>
+                                                          <Trash className="h-3 w-3 text-red-500" />
+                                                        </Button>
+                                                      </div>
+                                                    </td>
+                                                  </tr>
+                                                ));
+                                              })}
+                                            </tbody>
+                                            <tfoot>
+                                              <tr className="bg-slate-100/80 dark:bg-slate-800/60 font-semibold text-slate-700 dark:text-slate-200">
+                                                <td className="px-3 py-2 pl-16" colSpan={3}>Total</td>
+                                                <td className="px-2 py-2 text-right tabular-nums">—</td>
+                                                <td className="px-2 py-2 text-right tabular-nums text-green-700 dark:text-green-400">₹{totalEveningCowAmt + totalEveningBufAmt + totalEveningSapAmt}</td>
+                                                <td></td>
+                                              </tr>
+                                            </tfoot>
+                                          </table>
+                                        </div>
+                                      </>
+                                      )})()}
+                                  </div>
+
+                                  {/* Desktop: PDF-style table - one merged row per date */}
+                                  <div className="hidden md:block overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="bg-slate-100/50 dark:bg-slate-800/50">
+                                          <th className="px-3 py-2 pl-16 text-left font-medium text-slate-500">DATE</th>
+                                          <th colSpan={5} className="px-3 py-1 text-center font-medium text-yellow-700 dark:text-yellow-400 border-l border-slate-200 dark:border-slate-700">MORNING</th>
+                                          <th className="px-2 py-1 text-center font-normal border-l border-slate-200 dark:border-slate-700 w-[60px]"></th>
+                                          <th colSpan={5} className="px-3 py-1 text-center font-medium text-indigo-700 dark:text-indigo-400 border-l border-slate-200 dark:border-slate-700">EVENING</th>
+                                          <th className="px-2 py-1 text-center font-normal border-l border-slate-200 dark:border-slate-700 w-[60px]"></th>
+                                        </tr>
+                                        <tr className="bg-slate-100/50 dark:bg-slate-800/50 text-slate-500">
+                                          <th className="px-2 py-1 text-left font-normal"></th>
+                                          <th className="px-2 py-1 text-right font-normal border-l border-slate-200 dark:border-slate-700">COW</th>
+                                          <th className="px-2 py-1 text-right font-normal">SAP</th>
+                                          <th className="px-2 py-1 text-right font-normal">BUF</th>
+                                          <th className="px-2 py-1 text-right font-normal">FAT</th>
+                                          <th className="px-2 py-1 text-right font-normal">AMT</th>
+                                          <th className="px-2 py-1 text-center font-normal border-l border-slate-200 dark:border-slate-700"></th>
+                                          <th className="px-2 py-1 text-right font-normal border-l border-slate-200 dark:border-slate-700">COW</th>
+                                          <th className="px-2 py-1 text-right font-normal">SAP</th>
+                                          <th className="px-2 py-1 text-right font-normal">BUF</th>
+                                          <th className="px-2 py-1 text-right font-normal">FAT</th>
+                                          <th className="px-2 py-1 text-right font-normal">AMT</th>
+                                          <th className="px-2 py-1 text-center font-normal border-l border-slate-200 dark:border-slate-700"></th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                        {(() => {
+                                          const dateMap = new Map<string, typeof sortedLogs>();
+                                          sortedLogs.forEach((log) => {
+                                            const existing = dateMap.get(log.date) ?? [];
+                                            existing.push(log);
+                                            dateMap.set(log.date, existing);
+                                          });
+                                          const dates = Array.from(dateMap.keys()).sort();
+
+                                          return dates.map((date) => {
+                                            const dayLogs = dateMap.get(date) ?? [];
+                                            const morningLogs = dayLogs.filter((l) => l.timePeriod === "Morning");
+                                            const eveningLogs = dayLogs.filter((l) => l.timePeriod === "Evening");
+                                            const dateTotal = dayLogs.reduce((s, l) => s + (l.amount ?? 0), 0);
+
+                                            const renderLines = (values: (string | null)[]) => {
+                                              if (values.every((v) => v === null)) return null;
+                                              return values.map((v, i) => (
+                                                <span key={i} className="block leading-relaxed">{v ?? ""}</span>
+                                              ));
+                                            };
+
+                                            // Build per-log aligned values for morning
+                                            const mCowVals = morningLogs.map((l) => l.milkType === "Cow" ? l.qty.toFixed(1) : null);
+                                            const mSapVals = morningLogs.map((l) => l.milkType === "Sapreta" ? l.qty.toFixed(1) : null);
+                                            const mBufVals = morningLogs.map((l) => l.milkType === "Buffalo" ? l.qty.toFixed(1) : null);
+                                            const mFatVals = morningLogs.map((l) => l.milkType === "Buffalo" ? (l.fat ?? 0).toFixed(1) : null);
+                                            const mTotal = morningLogs.reduce((s, l) => s + (l.amount ?? 0), 0);
+                                            const mAmtVals = morningLogs.map((_, i) => i === morningLogs.length - 1 ? `₹${mTotal.toFixed(0)}` : null);
+
+                                            // Build per-log aligned values for evening
+                                            const eCowVals = eveningLogs.map((l) => l.milkType === "Cow" ? l.qty.toFixed(1) : null);
+                                            const eSapVals = eveningLogs.map((l) => l.milkType === "Sapreta" ? l.qty.toFixed(1) : null);
+                                            const eBufVals = eveningLogs.map((l) => l.milkType === "Buffalo" ? l.qty.toFixed(1) : null);
+                                            const eFatVals = eveningLogs.map((l) => l.milkType === "Buffalo" ? (l.fat ?? 0).toFixed(1) : null);
+                                            const eTotal = eveningLogs.reduce((s, l) => s + (l.amount ?? 0), 0);
+                                            const eAmtVals = eveningLogs.map((_, i) => i === eveningLogs.length - 1 ? `₹${eTotal.toFixed(0)}` : null);
+
+                                            return (
+                                              <tr key={date} className="hover:bg-white dark:hover:bg-slate-900/50">
+                                                <td className="px-3 py-2 pl-16 font-medium text-slate-700 dark:text-slate-200 align-top whitespace-nowrap">
+                                                  {new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                                                  <span className="ml-2 text-[10px] text-slate-400">({dayLogs.length})</span>
+                                                  <div className="text-[10px] font-normal text-green-700 dark:text-green-400 mt-0.5">₹{dateTotal.toFixed(0)}</div>
+                                                </td>
+                                                {/* Morning columns */}
+                                                <td className="px-2 py-2 text-right tabular-nums border-l border-slate-100 dark:border-slate-800 align-top">{renderLines(mCowVals)}</td>
+                                                <td className="px-2 py-2 text-right tabular-nums align-top">{renderLines(mSapVals)}</td>
+                                                <td className="px-2 py-2 text-right tabular-nums align-top">{renderLines(mBufVals)}</td>
+                                                <td className="px-2 py-2 text-right tabular-nums align-top">{renderLines(mFatVals)}</td>
+                                                <td className="px-2 py-2 text-right tabular-nums font-medium align-top">{renderLines(mAmtVals)}</td>
+                                                {/* Morning Edit */}
+                                                <td className="px-2 py-2 text-center border-l border-slate-100 dark:border-slate-800 align-top">
+                                                  {morningLogs.length > 0 ? (
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(morningLogs)}>
+                                                      <Pencil className="h-3 w-3 text-slate-500" />
+                                                    </Button>
+                                                  ) : null}
+                                                </td>
+                                                {/* Evening columns */}
+                                                <td className="px-2 py-2 text-right tabular-nums border-l border-slate-100 dark:border-slate-800 align-top">{renderLines(eCowVals)}</td>
+                                                <td className="px-2 py-2 text-right tabular-nums align-top">{renderLines(eSapVals)}</td>
+                                                <td className="px-2 py-2 text-right tabular-nums align-top">{renderLines(eBufVals)}</td>
+                                                <td className="px-2 py-2 text-right tabular-nums align-top">{renderLines(eFatVals)}</td>
+                                                <td className="px-2 py-2 text-right tabular-nums font-medium align-top">{renderLines(eAmtVals)}</td>
+                                                {/* Evening Edit */}
+                                                <td className="px-2 py-2 text-center border-l border-slate-100 dark:border-slate-800 align-top">
+                                                  {eveningLogs.length > 0 ? (
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(eveningLogs)}>
+                                                      <Pencil className="h-3 w-3 text-slate-500" />
+                                                    </Button>
+                                                  ) : null}
+                                                </td>
+                                              </tr>
+                                            );
+                                          });
+                                        })()}
+                                      </tbody>
+                                      <tfoot>
+                                        <tr className="bg-slate-100/80 dark:bg-slate-800/60 font-semibold text-slate-700 dark:text-slate-200">
+                                          <td className="px-3 py-2 pl-16">Total</td>
+                                          <td className="px-2 py-2 text-right tabular-nums border-l border-slate-200 dark:border-slate-700">{totalMorningCowQty.toFixed(1)}</td>
+                                          <td className="px-2 py-2 text-right tabular-nums">{totalMorningSapQty.toFixed(1)}</td>
+                                          <td className="px-2 py-2 text-right tabular-nums">{totalMorningBufQty.toFixed(1)}</td>
+                                          <td className="px-2 py-2 text-right tabular-nums">—</td>
+                                          <td className="px-2 py-2 text-right tabular-nums text-green-700 dark:text-green-400">₹{totalMorningCowAmt + totalMorningBufAmt + totalMorningSapAmt}</td>
+                                          <td className="border-l border-slate-200 dark:border-slate-700"></td>
+                                          <td className="px-2 py-2 text-right tabular-nums border-l border-slate-200 dark:border-slate-700">{totalEveningCowQty.toFixed(1)}</td>
+                                          <td className="px-2 py-2 text-right tabular-nums">{totalEveningSapQty.toFixed(1)}</td>
+                                          <td className="px-2 py-2 text-right tabular-nums">{totalEveningBufQty.toFixed(1)}</td>
+                                          <td className="px-2 py-2 text-right tabular-nums">—</td>
+                                          <td className="px-2 py-2 text-right tabular-nums text-green-700 dark:text-green-400">₹{totalEveningCowAmt + totalEveningBufAmt + totalEveningSapAmt}</td>
+                                          <td className="border-l border-slate-200 dark:border-slate-700"></td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {toast && (

@@ -467,7 +467,7 @@ export default function BillsPage() {
               <td colspan="10" class="text-right"><strong>GRAND TOTAL (Current):</strong></td>
               <td class="text-right"><strong>₹${grandTotal.toFixed(0)}</strong></td>
             </tr>
-            ${matchingBill ? `
+            ${matchingBill && !account.blockBalance ? `
             <tr style="background: #f9fafb;">
               <td colspan="10" class="text-right" style="color: #6b7280;">Previous Balance:</td>
               <td class="text-right" style="color: #6b7280;">₹${matchingBill.previousBalanceAtGeneration.toFixed(0)}</td>
@@ -475,6 +475,11 @@ export default function BillsPage() {
             <tr style="background: #eff6ff;">
               <td colspan="10" class="text-right"><strong style="color: #1d4ed8;">CLOSING BALANCE:</strong></td>
               <td class="text-right"><strong style="color: #1d4ed8;">₹${matchingBill.newBalance.toFixed(0)}</strong></td>
+            </tr>
+            ` : ''}
+            ${account.blockBalance ? `
+            <tr style="background: #f9fafb;">
+              <td colspan="11" class="text-center" style="color: #6b7280; font-style: italic;">Balance calculations blocked for this account</td>
             </tr>
             ` : ''}
           </tbody>
@@ -647,10 +652,13 @@ export default function BillsPage() {
       }
 
       const items = toGenerate.map(({ account, totalCow, totalBuffalo, totalSapreta, totalAmount, receivedAmount, givenAmount, baseBalance, existingBill }) => {
-        const previousBalanceAtGeneration = existingBill
-          ? baseBalance
-          : account.previousBalance;
-        const newBalance = previousBalanceAtGeneration + totalAmount;
+        const isBlocked = account.blockBalance ?? false;
+        const previousBalanceAtGeneration = isBlocked
+          ? 0
+          : existingBill
+            ? baseBalance
+            : account.previousBalance;
+        const newBalance = isBlocked ? 0 : previousBalanceAtGeneration + totalAmount;
 
         return {
           billData: {
@@ -668,7 +676,7 @@ export default function BillsPage() {
             previousBalanceAtGeneration,
             newBalance,
           },
-          accountNewBalance: newBalance,
+          accountNewBalance: isBlocked ? account.previousBalance : newBalance,
         };
       });
 

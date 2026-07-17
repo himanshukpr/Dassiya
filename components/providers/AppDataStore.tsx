@@ -48,6 +48,7 @@ export interface Account {
   rateOverrides?: Partial<Rates> | null;
   fixedFatMorning?: number | null; // fixed buffalo milk fat for morning entries; null = manual
   fixedFatEvening?: number | null; // fixed buffalo milk fat for evening entries; null = manual
+  blockBalance?: boolean; // if true, skip all balance calculations for this account
 }
 
 export interface MilkLog {
@@ -540,7 +541,8 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
   const deleteBill = useCallback(async (bill: Bill) => {
     if (!user) return;
     const account = accounts.find((a) => a.id === bill.accountId);
-    const revertedBalance = account
+    const isBlocked = account?.blockBalance ?? false;
+    const revertedBalance = account && !isBlocked
       ? account.previousBalance - bill.totalMilkAmount
       : null;
 

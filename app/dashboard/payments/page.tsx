@@ -121,11 +121,14 @@ export default function ReceiptsPage() {
     : null;
 
   // Receipt always SUBTRACTS from the balance (clears dues)
+  const isBlocked = selectedAccount?.blockBalance ?? false;
   const newBalance =
     selectedAccount && amount
-      ? editingReceipt
-        ? selectedAccount.previousBalance + editingReceipt.amount - (parseFloat(amount) || 0)
-        : selectedAccount.previousBalance - (parseFloat(amount) || 0)
+      ? isBlocked
+        ? selectedAccount.previousBalance
+        : editingReceipt
+          ? selectedAccount.previousBalance + editingReceipt.amount - (parseFloat(amount) || 0)
+          : selectedAccount.previousBalance - (parseFloat(amount) || 0)
       : null;
 
   const handleEdit = (receipt: Receipt) => {
