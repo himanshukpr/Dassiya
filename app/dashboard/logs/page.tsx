@@ -15,7 +15,7 @@ import {
   SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, MagnifyingGlass, Pencil, Plus, Trash, WarningCircle, X } from "@phosphor-icons/react";
+import { CheckCircle, List, Calendar, MagnifyingGlass, Pencil, Plus, Trash, WarningCircle, X } from "@phosphor-icons/react";
 
 type ToastState = {
   message: string;
@@ -142,6 +142,8 @@ export default function LogsPage() {
   // Hierarchical view state
   const [selectedAccountName, setSelectedAccountName] = useState<string | null>(null);
   const [selectedPeriodLabel, setSelectedPeriodLabel] = useState<string | null>(null);
+  // Records display mode: "hierarchy" (by account) or "datewise" (by date)
+  const [logView, setLogView] = useState<"hierarchy" | "datewise">("hierarchy");
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
   const effectiveRates = useMemo(
@@ -316,6 +318,12 @@ export default function LogsPage() {
       })
       .sort(sortByCreatedAt);
   }, [logs, filterAccountType, logSearch]);
+
+  // Logs for the "By Date" view, with optional single-date filter applied
+  const dateViewLogs = useMemo(() => {
+    if (logView !== "datewise" || !filterDate) return filteredLogs;
+    return filteredLogs.filter((log) => log.date === filterDate);
+  }, [filteredLogs, logView, filterDate]);
 
   // Helper to get period label from date
   const getPeriodLabel = (dateStr: string): string => {
@@ -1289,15 +1297,41 @@ export default function LogsPage() {
               className="pl-9"
             />
           </div>
+          <div className="mt-3 inline-flex rounded-lg border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-50 dark:bg-slate-800/50">
+            <button
+              type="button"
+              onClick={() => setLogView("hierarchy")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                logView === "hierarchy"
+                  ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <List className="h-3.5 w-3.5" />
+              By Account
+            </button>
+            <button
+              type="button"
+              onClick={() => setLogView("datewise")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                logView === "datewise"
+                  ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              By Date
+            </button>
+          </div>
         </div>
 
         {loadingLogs ? (
           <div className="p-12 text-center text-slate-400">Loading logs...</div>
-        ) : accountGroups.length === 0 ? (
+        ) : filteredLogs.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
             No logs found for {filterAccountType} accounts.
           </div>
-        ) : (
+        ) : logView === "hierarchy" ? (
           <div className="divide-y">
             {accountGroups.map(([accountName, accountLogs]) => {
               const isExpanded = selectedAccountName === accountName;
@@ -1661,6 +1695,86 @@ export default function LogsPage() {
                 </div>
               );
             })}
+          </div>
+        ) : (
+          <div>
+            <div className="flex flex-wrap items-center gap-2 border-b p-4">
+              <Label htmlFor="date-filter" className="text-xs font-medium text-muted-foreground">Filter by date:</Label>
+              <Input
+                id="date-filter"
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="w-auto"
+              />
+              {filterDate && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setFilterDate("")}>
+                  Clear
+                </Button>
+              )}
+              <span className="ml-auto text-xs text-muted-foreground">
+                {dateViewLogs.length} record{dateViewLogs.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            {dateViewLogs.length === 0 ? (
+              <div className="p-12 text-center text-slate-500">
+                No logs found{filterDate ? ` for ${new Date(filterDate + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}` : ""}.
+              </div>
+            ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-100/50 dark:bg-slate-800/50 text-slate-500">
+                    <th className="px-3 py-2 text-left font-medium">DATE</th>
+                    <th className="px-3 py-2 text-left font-medium">ACCOUNT</th>
+                    <th className="px-2 py-2 text-left font-medium">PERIOD</th>
+                    <th className="px-2 py-2 text-left font-medium">TYPE</th>
+                  <th className="px-2 py-2 text-right font-medium">QTY</th>
+                  <th className="px-2 py-2 text-right font-medium">FAT</th>
+                  <th className="px-2 py-2 text-right font-medium">AMT</th>
+                  <th className="px-2 py-2 text-center font-medium w-[70px]"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {[...dateViewLogs]
+                  .sort((a, b) => {
+                    const da = new Date(a.date + "T00:00:00").getTime();
+                    const db = new Date(b.date + "T00:00:00").getTime();
+                    if (db !== da) return db - da; // newest date first
+                    return a.timePeriod === "Morning" ? -1 : 1;
+                  })
+                  .map((log) => (
+                    <tr key={log.id} className="hover:bg-white dark:hover:bg-slate-900/50">
+                      <td className="px-3 py-2 font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                        {new Date(log.date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                      </td>
+                      <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{log.accountName}</td>
+                      <td className="px-2 py-2">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${log.timePeriod === "Morning" ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300" : "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300"}`}>
+                          {log.timePeriod}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2 text-slate-600 dark:text-slate-300">{log.milkType}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{log.qty.toFixed(1)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{log.milkType === "Buffalo" ? (log.fat ?? 0).toFixed(1) : "—"}</td>
+                      <td className="px-2 py-2 text-right tabular-nums font-medium text-green-700 dark:text-green-400">₹{(log.amount ?? 0).toFixed(0)}</td>
+                      <td className="px-2 py-2 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit([log])}>
+                            <Pencil className="h-3 w-3 text-slate-500" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDelete(log.id)}>
+                            <Trash className="h-3 w-3 text-red-500" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            </div>
+            )}
           </div>
         )}
       </div>
