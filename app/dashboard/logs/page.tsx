@@ -900,7 +900,11 @@ export default function LogsPage() {
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="date">Date</Label>
-                      <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+                      <Input id="date" type="date" value={date} onChange={(e) => {
+                        const newDate = e.target.value;
+                        setDate(newDate);
+                        setLogRows((prev) => prev.map((row) => ({ ...row, date: newDate })));
+                      }} required />
                     </div>
 
                     <div className="flex border-b">
